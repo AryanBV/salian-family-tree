@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
-import { Search, Plus, Home, ZoomIn, ZoomOut, Users, Download, Upload, Cloud, Wifi, WifiOff, User } from 'lucide-react';
+import { Search, Plus, Home, ZoomIn, ZoomOut, Users, Download, Upload, Cloud, Wifi, WifiOff, User, MapPin, Heart, Menu } from 'lucide-react';
 import AddPersonForm from './AddPersonForm';
 import PersonProfile from './PersonProfile';
 import { initialFamilyData, searchFamilyData } from '../data/familyData';
@@ -20,11 +20,22 @@ const FamilyTree = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState('Connected');
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   
   // Refs
   const svgRef = useRef();
   const unsubscribeRef = useRef(null);
   const dimensions = { width: 1400, height: 900 };
+
+  // Check for mobile on resize
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Firebase-compatible buildHierarchy function
   const buildHierarchy = (data) => {
@@ -62,6 +73,62 @@ const FamilyTree = () => {
       isVirtual: true,
       children: roots
     };
+  };
+
+  // Build mobile-friendly family structure grouped by generations
+  const buildMobileStructure = (data) => {
+    if (!data || data.length === 0) return [];
+
+    // Calculate generation levels
+    const generationMap = new Map();
+    const visited = new Set();
+
+    const calculateGeneration = (personId, level = 0) => {
+      if (visited.has(personId)) return;
+      visited.add(personId);
+
+      const person = data.find(p => p.id === personId);
+      if (!person) return;
+
+      // Update generation if we found a deeper path
+      if (!generationMap.has(personId) || generationMap.get(personId) < level) {
+        generationMap.set(personId, level);
+      }
+
+      // Find all children
+      const children = data.filter(p => p.parentId === personId);
+      children.forEach(child => {
+        calculateGeneration(child.id, level + 1);
+      });
+    };
+
+    // Start from roots
+    const roots = data.filter(p => !p.parentId);
+    roots.forEach(root => calculateGeneration(root.id, 0));
+
+    // Group by generation
+    const generations = [];
+    const maxGeneration = Math.max(...Array.from(generationMap.values()));
+
+    for (let i = 0; i <= maxGeneration; i++) {
+      const peopleInGeneration = data.filter(person => 
+        generationMap.get(person.id) === i
+      );
+      if (peopleInGeneration.length > 0) {
+        generations.push({
+          level: i,
+          people: peopleInGeneration.sort((a, b) => {
+            // Sort by parent first, then by name
+            if (a.parentId !== b.parentId) {
+              return (a.parentId || 0) - (b.parentId || 0);
+            }
+            return a.name.localeCompare(b.name);
+          })
+        });
+      }
+    }
+
+    return generations;
   };
 
   // Load data from Firebase on component mount
@@ -174,10 +241,11 @@ const FamilyTree = () => {
   // Use enhanced search that maintains tree structure
   const filteredData = searchFamilyData(familyData, searchTerm);
   const hierarchyData = buildHierarchy(filteredData);
+  const mobileGenerations = buildMobileStructure(filteredData);
 
-  // Modern Card-Based Tree Visualization
+  // Modern Card-Based Tree Visualization (Desktop only)
   useEffect(() => {
-    if (!hierarchyData || !svgRef.current) return;
+    if (!hierarchyData || !svgRef.current || isMobile) return;
 
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
@@ -383,7 +451,66 @@ const FamilyTree = () => {
           .style("filter", "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))");
       });
 
-  }, [hierarchyData, dimensions, transform, searchTerm]);
+  }, [hierarchyData, dimensions, transform, searchTerm, isMobile]);
+
+  // Mobile Person Card Component
+  const MobilePersonCard = ({ person, isChild = false }) => {
+    const handleClick = () => {
+      setSelectedPerson(person);
+      setShowProfile(true);
+    };
+
+    const children = familyData.filter(p => p.parentId === person.id);
+
+    return (
+      <div>
+        <div 
+          className={`mobile-person-card ${person.isMainLineage ? 'main-lineage' : ''} ${person.deathYear ? 'deceased' : ''}`}
+          onClick={handleClick}
+        >
+          <div className="mobile-card-header">
+            <div className={`mobile-card-avatar ${person.gender}`}>
+              {person.gender === 'female' ? '♀' : '♂'}
+            </div>
+            <div className="mobile-card-info">
+              <div className="mobile-card-name">{person.name}</div>
+              <div className="mobile-card-dates">
+                {person.birthYear || '?'} - {person.deathYear || ''}
+              </div>
+            </div>
+          </div>
+          <div className="mobile-card-details">
+            {person.location && (
+              <div className="mobile-card-detail">
+                <MapPin size={12} />
+                {person.location}
+              </div>
+            )}
+            {person.spouse && (
+              <div className="mobile-card-detail">
+                <Heart size={12} />
+                {person.spouse}
+              </div>
+            )}
+            {children.length > 0 && (
+              <div className="mobile-card-detail">
+                <Users size={12} />
+                {children.length} {children.length === 1 ? 'child' : 'children'}
+              </div>
+            )}
+          </div>
+          <div className="mobile-card-indicator"></div>
+        </div>
+        {!isChild && children.length > 0 && (
+          <div className="mobile-card-children">
+            {children.map(child => (
+              <MobilePersonCard key={child.id} person={child} isChild={true} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // Add new person to Firebase
   const handleAddPerson = async (newPerson) => {
@@ -570,7 +697,7 @@ const FamilyTree = () => {
       <div className="header">
         <div className="header-content">
           <div className="title-section">
-            <Users size={32} color="#3b82f6" />
+            <Users size={isMobile ? 24 : 32} color="#3b82f6" />
             <h1 className="title">Salian Family Tree</h1>
             <div style={{ 
               display: 'flex', 
@@ -583,7 +710,7 @@ const FamilyTree = () => {
               borderRadius: '0.25rem'
             }}>
               {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
-              {connectionStatus}
+              {isMobile ? (isOnline ? 'On' : 'Off') : connectionStatus}
             </div>
           </div>
           <div className="controls-section">
@@ -619,12 +746,12 @@ const FamilyTree = () => {
             {/* Export/Import */}
             <button onClick={exportData} className="add-button" style={{ background: '#059669' }}>
               <Download size={16} />
-              Export
+              {!isMobile && 'Export'}
             </button>
             
             <label className="add-button" style={{ background: '#7c3aed' }}>
               <Upload size={16} />
-              Import
+              {!isMobile && 'Import'}
               <input
                 type="file"
                 accept=".json"
@@ -644,60 +771,101 @@ const FamilyTree = () => {
               className="add-button"
             >
               <Plus size={16} />
-              Add Person
+              {!isMobile && 'Add Person'}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Zoom Controls */}
-      <div className="zoom-controls">
-        <button onClick={() => handleZoom(1.2)} className="zoom-button" title="Zoom In">
-          <ZoomIn size={20} />
-        </button>
-        <button onClick={() => handleZoom(0.8)} className="zoom-button" title="Zoom Out">
-          <ZoomOut size={20} />
-        </button>
-        <button onClick={resetView} className="zoom-button" title="Reset View">
-          <Home size={20} />
-        </button>
-      </div>
+      {/* Desktop View - Zoom Controls */}
+      {!isMobile && (
+        <div className="zoom-controls">
+          <button onClick={() => handleZoom(1.2)} className="zoom-button" title="Zoom In">
+            <ZoomIn size={20} />
+          </button>
+          <button onClick={() => handleZoom(0.8)} className="zoom-button" title="Zoom Out">
+            <ZoomOut size={20} />
+          </button>
+          <button onClick={resetView} className="zoom-button" title="Reset View">
+            <Home size={20} />
+          </button>
+        </div>
+      )}
 
-      {/* Legend */}
-      <div className="legend">
-        <h3>Legend</h3>
-        <div className="legend-item">
-          <div className="legend-circle legend-main"></div>
-          <span>Main Salian lineage (♀)</span>
-        </div>
-        <div className="legend-item">
-          <div className="legend-circle legend-member"></div>
-          <span>Salian family member</span>
-        </div>
-        <div className="legend-item">
-          <div className="legend-circle legend-deceased"></div>
-          <span>Deceased</span>
-        </div>
-        {searchTerm && (
+      {/* Desktop View - Legend */}
+      {!isMobile && (
+        <div className="legend">
+          <h3>Legend</h3>
           <div className="legend-item">
-            <div className="legend-circle" style={{ background: '#f59e0b', borderColor: '#f59e0b' }}></div>
-            <span>Search matches</span>
+            <div className="legend-circle legend-main"></div>
+            <span>Main Salian lineage (♀)</span>
           </div>
-        )}
-        <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#9ca3af' }}>
-          Click any card to view profile & actions
+          <div className="legend-item">
+            <div className="legend-circle legend-member"></div>
+            <span>Salian family member</span>
+          </div>
+          <div className="legend-item">
+            <div className="legend-circle legend-deceased"></div>
+            <span>Deceased</span>
+          </div>
+          {searchTerm && (
+            <div className="legend-item">
+              <div className="legend-circle" style={{ background: '#f59e0b', borderColor: '#f59e0b' }}></div>
+              <span>Search matches</span>
+            </div>
+          )}
+          <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#9ca3af' }}>
+            Click any card to view profile & actions
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Family Tree */}
-      <div className="tree-container">
-        <svg
-          ref={svgRef}
-          width={dimensions.width}
-          height={dimensions.height}
-          className="tree-svg"
-        />
-      </div>
+      {/* Desktop View - Family Tree */}
+      {!isMobile && (
+        <div className="tree-container">
+          <svg
+            ref={svgRef}
+            width={dimensions.width}
+            height={dimensions.height}
+            className="tree-svg"
+          />
+        </div>
+      )}
+
+      {/* Mobile View - List of family members */}
+      {isMobile && (
+        <div className="mobile-view">
+          {searchTerm && filteredData.length > 0 && (
+            <div className="mobile-search-results">
+              Found {filteredData.length} matching family member{filteredData.length !== 1 ? 's' : ''}
+            </div>
+          )}
+          
+          {mobileGenerations.map((generation) => (
+            <div key={generation.level} className="family-group">
+              <div className="generation-header">
+                Generation {generation.level + 1}
+              </div>
+              {generation.people
+                .filter(person => generation.level === 0 || !generation.people.some(p => p.id === person.parentId))
+                .map(person => (
+                  <MobilePersonCard key={person.id} person={person} />
+                ))
+              }
+            </div>
+          ))}
+          
+          {filteredData.length === 0 && searchTerm && (
+            <div style={{ 
+              textAlign: 'center', 
+              padding: '2rem', 
+              color: '#6b7280' 
+            }}>
+              No family members found matching "{searchTerm}"
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Person Profile Modal */}
       <PersonProfile
@@ -746,20 +914,22 @@ const FamilyTree = () => {
         addingParentFor={addingParentFor}
       />
 
-      {/* Data info */}
-      <div style={{
-        position: 'fixed',
-        bottom: '1rem',
-        right: '1rem',
-        background: 'rgba(255,255,255,0.9)',
-        padding: '0.5rem',
-        borderRadius: '0.25rem',
-        fontSize: '0.75rem',
-        color: '#6b7280'
-      }}>
-        {familyData.length} family members • {isOnline ? 'Cloud storage' : 'Offline mode'}
-        {searchTerm && ` • Showing ${filteredData.length} matches`}
-      </div>
+      {/* Data info - Desktop only */}
+      {!isMobile && (
+        <div style={{
+          position: 'fixed',
+          bottom: '1rem',
+          right: '1rem',
+          background: 'rgba(255,255,255,0.9)',
+          padding: '0.5rem',
+          borderRadius: '0.25rem',
+          fontSize: '0.75rem',
+          color: '#6b7280'
+        }}>
+          {familyData.length} family members • {isOnline ? 'Cloud storage' : 'Offline mode'}
+          {searchTerm && ` • Showing ${filteredData.length} matches`}
+        </div>
+      )}
     </div>
   );
 };

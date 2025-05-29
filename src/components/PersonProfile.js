@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Edit, Plus, Trash2, Calendar, MapPin, Heart, Users } from 'lucide-react';
+import { User, Edit, Plus, Trash2, Calendar, MapPin, Heart, Users, X } from 'lucide-react';
 
 const PersonProfile = ({ 
   person, 
@@ -71,7 +71,8 @@ const PersonProfile = ({
             justifyContent: 'center',
             color: 'white',
             fontSize: '24px',
-            fontWeight: 'bold'
+            fontWeight: 'bold',
+            flexShrink: 0
           }}>
             {person.gender === 'female' ? '♀' : '♂'}
           </div>
@@ -89,7 +90,8 @@ const PersonProfile = ({
               color: '#6b7280',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem'
+              gap: '0.5rem',
+              flexWrap: 'wrap'
             }}>
               {person.isMainLineage && (
                 <span style={{ 
@@ -114,10 +116,13 @@ const PersonProfile = ({
               fontSize: '1.5rem',
               color: '#6b7280',
               cursor: 'pointer',
-              padding: '0.25rem'
+              padding: '0.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
           >
-            ×
+            <X size={24} />
           </button>
         </div>
 
@@ -267,7 +272,8 @@ const PersonProfile = ({
                 background: '#f0fdf4', 
                 padding: '1rem', 
                 borderRadius: '0.5rem',
-                border: '1px solid #bbf7d0'
+                border: '1px solid #bbf7d0',
+                gridColumn: children.length > 3 ? 'span 2' : 'auto'
               }}>
                 <div style={{ 
                   display: 'flex', 
@@ -294,7 +300,8 @@ const PersonProfile = ({
           gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', 
           gap: '0.75rem',
           borderTop: '1px solid #e5e7eb',
-          paddingTop: '1rem'
+          paddingTop: '1rem',
+          marginTop: 'auto'
         }}>
           <button
             onClick={() => onAddChild(person)}
@@ -310,7 +317,8 @@ const PersonProfile = ({
               justifyContent: 'center',
               gap: '0.5rem',
               fontSize: '0.875rem',
-              fontWeight: '500'
+              fontWeight: '500',
+              transition: 'background-color 0.2s'
             }}
           >
             <Plus size={16} />
@@ -331,7 +339,9 @@ const PersonProfile = ({
               justifyContent: 'center',
               gap: '0.5rem',
               fontSize: '0.875rem',
-              fontWeight: '500'
+              fontWeight: '500',
+              opacity: parent ? 0.5 : 1,
+              transition: 'background-color 0.2s'
             }}
             disabled={!!parent}
             title={parent ? "Parent already exists" : "Add parent to this person"}
@@ -354,7 +364,8 @@ const PersonProfile = ({
               justifyContent: 'center',
               gap: '0.5rem',
               fontSize: '0.875rem',
-              fontWeight: '500'
+              fontWeight: '500',
+              transition: 'background-color 0.2s'
             }}
           >
             <Edit size={16} />
@@ -375,7 +386,8 @@ const PersonProfile = ({
               justifyContent: 'center',
               gap: '0.5rem',
               fontSize: '0.875rem',
-              fontWeight: '500'
+              fontWeight: '500',
+              transition: 'background-color 0.2s'
             }}
           >
             <Trash2 size={16} />
@@ -396,7 +408,9 @@ const PersonProfile = ({
               justifyContent: 'center',
               gap: '0.5rem',
               fontSize: '0.875rem',
-              fontWeight: '500'
+              fontWeight: '500',
+              gridColumn: window.innerWidth <= 768 ? 'span 2' : 'auto',
+              transition: 'background-color 0.2s'
             }}
           >
             Close
