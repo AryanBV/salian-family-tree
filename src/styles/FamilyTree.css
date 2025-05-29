@@ -6,6 +6,7 @@
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+/* Header Styles */
 .header {
   background: white;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -39,6 +40,7 @@
   gap: 1rem;
 }
 
+/* Search Styles */
 .search-container {
   position: relative;
 }
@@ -67,6 +69,7 @@
   height: 1rem;
 }
 
+/* Button Styles */
 .add-button {
   background: #3b82f6;
   color: white;
@@ -85,6 +88,7 @@
   background: #2563eb;
 }
 
+/* Zoom Controls */
 .zoom-controls {
   position: fixed;
   top: 120px;
@@ -115,6 +119,7 @@
   background: #f3f4f6;
 }
 
+/* Legend Styles */
 .legend {
   position: fixed;
   top: 120px;
@@ -166,6 +171,7 @@
   opacity: 0.6;
 }
 
+/* Tree Container */
 .tree-container {
   width: 100%;
   height: calc(100vh - 80px);
@@ -183,7 +189,7 @@
   cursor: grabbing;
 }
 
-/* Modal styles */
+/* Modal Styles */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -214,6 +220,19 @@
   color: #1f2937;
 }
 
+/* Enhanced modal styles for profile */
+.modal-content h2 {
+  color: #1f2937;
+  margin-bottom: 1rem;
+}
+
+.modal-content h3 {
+  color: #374151;
+  margin-bottom: 0.75rem;
+  font-size: 1.125rem;
+}
+
+/* Form Styles */
 .form-group {
   margin-bottom: 1rem;
 }
@@ -246,6 +265,7 @@
   gap: 1rem;
 }
 
+/* Button Group Styles */
 .button-group {
   display: flex;
   gap: 0.75rem;
@@ -266,6 +286,8 @@
 
 .button-primary:hover {
   background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
 }
 
 .button-secondary {
@@ -282,25 +304,46 @@
 
 .button-secondary:hover {
   background: #d1d5db;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-/* D3 Tree Node Styles */
+/* Disabled button styles */
+.button-primary:disabled,
+button:disabled {
+  background: #9ca3af !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: none !important;
+  opacity: 0.6;
+}
+
+.button-primary:disabled:hover,
+button:disabled:hover {
+  background: #9ca3af !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* D3 Tree Node Styles - Fixed for Modern Cards */
 .tree-link {
   fill: none;
-  stroke: #999;
+  stroke: #cbd5e1;
   stroke-width: 2px;
 }
 
 .tree-node {
   cursor: pointer;
-}
-
-.tree-node circle {
   transition: all 0.3s ease;
 }
 
-.tree-node:hover circle {
-  stroke-width: 4px;
+/* Fixed: Removed problematic hover transform that caused shaking */
+.tree-node rect {
+  transition: all 0.3s ease;
+}
+
+.tree-node:hover rect {
+  filter: drop-shadow(0 8px 15px rgba(0, 0, 0, 0.15)) !important;
 }
 
 .tree-node text {
@@ -308,7 +351,12 @@
   pointer-events: none;
 }
 
-/* Responsive design */
+/* Modern card shadows and effects */
+.tree-node rect {
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+}
+
+/* Responsive Design */
 @media (max-width: 768px) {
   .header-content {
     flex-direction: column;
@@ -334,5 +382,18 @@
   
   .tree-container {
     height: calc(100vh - 200px);
+  }
+
+  .modal-content {
+    max-width: 95%;
+    padding: 1rem;
+  }
+  
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .button-group {
+    flex-direction: column;
   }
 }

@@ -84,7 +84,10 @@ export const addPersonToFamily = (familyData, newPerson) => {
   }];
 };
 
+// Fixed hierarchy builder that handles multiple roots and search
 export const buildHierarchy = (data) => {
+  if (!data || data.length === 0) return null;
+
   const map = new Map();
   const roots = [];
 
@@ -106,5 +109,61 @@ export const buildHierarchy = (data) => {
     }
   });
 
-  return roots[0] || null; // Return the root node
+  // If multiple roots exist, create a virtual root to contain them all
+  if (roots.length === 0) return null;
+  if (roots.length === 1) return roots[0];
+  
+  // Multiple roots - create virtual root
+  return {
+    id: 'virtual-root',
+    name: 'Salian Family',
+    isVirtual: true,
+    children: roots
+  };
+};
+
+// Enhanced search that maintains family tree structure
+export const searchFamilyData = (familyData, searchTerm) => {
+  if (!searchTerm.trim()) return familyData;
+
+  const lowerSearchTerm = searchTerm.toLowerCase();
+  const matchingIds = new Set();
+  
+  // Find direct matches
+  familyData.forEach(person => {
+    if (
+      person.name.toLowerCase().includes(lowerSearchTerm) ||
+      (person.location && person.location.toLowerCase().includes(lowerSearchTerm))
+    ) {
+      matchingIds.add(person.id);
+    }
+  });
+
+  // Include all ancestors and descendants of matching people
+  const includeAncestors = (personId) => {
+    const person = familyData.find(p => p.id === personId);
+    if (person && person.parentId && !matchingIds.has(person.parentId)) {
+      matchingIds.add(person.parentId);
+      includeAncestors(person.parentId);
+    }
+  };
+
+  const includeDescendants = (personId) => {
+    const children = familyData.filter(p => p.parentId === personId);
+    children.forEach(child => {
+      if (!matchingIds.has(child.id)) {
+        matchingIds.add(child.id);
+        includeDescendants(child.id);
+      }
+    });
+  };
+
+  // For each match, include ancestors and descendants
+  Array.from(matchingIds).forEach(id => {
+    includeAncestors(id);
+    includeDescendants(id);
+  });
+
+  // Return filtered data that maintains tree structure
+  return familyData.filter(person => matchingIds.has(person.id));
 };
