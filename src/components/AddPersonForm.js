@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Camera, X } from 'lucide-react';
+// import { storageService } from '../services/firebase'; // Disabled until Firebase Storage is available
 
 const AddPersonForm = ({ 
   isOpen, 
@@ -12,34 +14,59 @@ const AddPersonForm = ({
 }) => {
   const [formData, setFormData] = useState({
     name: '',
+    nameKannada: '', // For future Kannada support
+    nickname: '',
     birthYear: '',
     deathYear: '',
     location: '',
+    locationKannada: '', // For future Kannada support
     gender: 'female',
-    spouse: ''
+    spouse: '',
+    photoURL: '',
+    siblingOrder: undefined
   });
+
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Pre-populate form when editing
   useEffect(() => {
     if (isEditing && editingPerson) {
       setFormData({
         name: editingPerson.name || '',
+        nameKannada: editingPerson.nameKannada || '',
+        nickname: editingPerson.nickname || '',
         birthYear: editingPerson.birthYear ? editingPerson.birthYear.toString() : '',
         deathYear: editingPerson.deathYear ? editingPerson.deathYear.toString() : '',
         location: editingPerson.location || '',
+        locationKannada: editingPerson.locationKannada || '',
         gender: editingPerson.gender || 'female',
-        spouse: editingPerson.spouse || ''
+        spouse: editingPerson.spouse || '',
+        photoURL: editingPerson.photoURL || '',
+        siblingOrder: editingPerson.siblingOrder
       });
+      
+      if (editingPerson.photoURL) {
+        setPhotoPreview(editingPerson.photoURL);
+      }
     } else {
       // Reset form for adding new person
       setFormData({
         name: '',
+        nameKannada: '',
+        nickname: '',
         birthYear: '',
         deathYear: '',
         location: '',
+        locationKannada: '',
         gender: 'female',
-        spouse: ''
+        spouse: '',
+        photoURL: '',
+        siblingOrder: undefined
       });
+      setPhotoFile(null);
+      setPhotoPreview(null);
     }
   }, [isEditing, editingPerson, isOpen]);
 
@@ -51,76 +78,176 @@ const AddPersonForm = ({
     }));
   };
 
-  const handleSubmit = () => {
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Check file size (2MB limit)
+      if (file.size > 2 * 1024 * 1024) {
+        alert('Photo size must be less than 2MB');
+        return;
+      }
+
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+      }
+
+      setPhotoFile(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setPhotoPreview(e.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removePhoto = () => {
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    setFormData(prev => ({ ...prev, photoURL: '' }));
+  };
+
+  const handleSubmit = async () => {
     if (!formData.name.trim()) {
       alert('Please enter a name');
       return;
     }
 
-    if (isEditing) {
-      // Update existing person
-      const updatedPerson = {
-        ...editingPerson,
-        name: formData.name,
-        birthYear: formData.birthYear ? parseInt(formData.birthYear) : null,
-        deathYear: formData.deathYear ? parseInt(formData.deathYear) : null,
-        location: formData.location,
-        gender: formData.gender,
-        spouse: formData.spouse || null,
-        // Recalculate main lineage status if gender changed
-        isMainLineage: (() => {
-          if (editingPerson.parentId) {
-            const parent = familyData.find(p => p.id === editingPerson.parentId);
-            return parent && parent.gender === 'female' && formData.gender === 'female';
+    setIsUploading(true);
+
+    try {
+      let photoURL = formData.photoURL;
+
+      // Photo upload disabled until Firebase Storage is available
+      /*
+      // Upload photo if new one selected
+      if (photoFile) {
+        try {
+          photoURL = await storageService.uploadPhoto(photoFile, formData.name);
+        } catch (error) {
+          console.error('Error uploading photo:', error);
+          alert('Failed to upload photo. Person will be saved without photo.');
+          photoURL = '';
+        }
+      }
+      */
+
+      if (isEditing) {
+        // Photo deletion disabled until Firebase Storage is available
+        /*
+        // If photo was removed and there was an old photo, delete it
+        if (!photoURL && editingPerson.photoURL) {
+          try {
+            await storageService.deletePhoto(editingPerson.photoURL);
+          } catch (error) {
+            console.error('Error deleting old photo:', error);
           }
-          return formData.gender === 'female';
-        })()
-      };
+        }
+        */
 
-      onAddPerson(updatedPerson);
-    } else {
-      // Add new person
-      const isMainLineage = selectedParent ? 
-        (selectedParent.gender === 'female' && formData.gender === 'female') : 
-        (formData.gender === 'female');
+        // Update existing person
+        const updatedPerson = {
+          ...editingPerson,
+          name: formData.name,
+          nameKannada: formData.nameKannada || null,
+          nickname: formData.nickname || null,
+          birthYear: formData.birthYear ? parseInt(formData.birthYear) : null,
+          deathYear: formData.deathYear ? parseInt(formData.deathYear) : null,
+          location: formData.location,
+          locationKannada: formData.locationKannada || null,
+          gender: formData.gender,
+          spouse: formData.spouse || null,
+          photoURL: photoURL || null,
+          siblingOrder: formData.siblingOrder,
+          // Recalculate main lineage status if gender changed
+          isMainLineage: (() => {
+            if (editingPerson.parentId) {
+              const parent = familyData.find(p => p.id === editingPerson.parentId);
+              return parent && parent.gender === 'female' && formData.gender === 'female';
+            }
+            return formData.gender === 'female';
+          })()
+        };
 
-      const newPerson = {
-        name: formData.name,
-        birthYear: formData.birthYear ? parseInt(formData.birthYear) : null,
-        deathYear: formData.deathYear ? parseInt(formData.deathYear) : null,
-        location: formData.location,
-        gender: formData.gender,
-        parentId: selectedParent ? selectedParent.id : null,
-        isMainLineage,
-        spouse: formData.spouse || null
-      };
+        await onAddPerson(updatedPerson);
+      } else {
+        // Add new person
+        const isMainLineage = selectedParent ? 
+          (selectedParent.gender === 'female' && formData.gender === 'female') : 
+          (formData.gender === 'female');
 
-      onAddPerson(newPerson);
+        // Calculate sibling order if not provided
+        let siblingOrder = formData.siblingOrder;
+        if (siblingOrder === undefined && selectedParent) {
+          const siblings = familyData.filter(p => p.parentId === selectedParent.id);
+          siblingOrder = siblings.length;
+        }
+
+        const newPerson = {
+          name: formData.name,
+          nameKannada: formData.nameKannada || null,
+          nickname: formData.nickname || null,
+          birthYear: formData.birthYear ? parseInt(formData.birthYear) : null,
+          deathYear: formData.deathYear ? parseInt(formData.deathYear) : null,
+          location: formData.location,
+          locationKannada: formData.locationKannada || null,
+          gender: formData.gender,
+          parentId: selectedParent ? selectedParent.id : null,
+          isMainLineage,
+          spouse: formData.spouse || null,
+          photoURL: photoURL || null,
+          siblingOrder: siblingOrder
+        };
+
+        await onAddPerson(newPerson);
+      }
+      
+      // Reset form
+      setFormData({
+        name: '',
+        nameKannada: '',
+        nickname: '',
+        birthYear: '',
+        deathYear: '',
+        location: '',
+        locationKannada: '',
+        gender: 'female',
+        spouse: '',
+        photoURL: '',
+        siblingOrder: undefined
+      });
+      setPhotoFile(null);
+      setPhotoPreview(null);
+      
+      onClose();
+    } catch (error) {
+      console.error('Error saving person:', error);
+      alert('Failed to save person. Please try again.');
+    } finally {
+      setIsUploading(false);
     }
-    
-    // Reset form
-    setFormData({
-      name: '',
-      birthYear: '',
-      deathYear: '',
-      location: '',
-      gender: 'female',
-      spouse: ''
-    });
-    
-    onClose();
   };
 
   const handleClose = () => {
     // Reset form when closing
     setFormData({
       name: '',
+      nameKannada: '',
+      nickname: '',
       birthYear: '',
       deathYear: '',
       location: '',
+      locationKannada: '',
       gender: 'female',
-      spouse: ''
+      spouse: '',
+      photoURL: '',
+      siblingOrder: undefined
     });
+    setPhotoFile(null);
+    setPhotoPreview(null);
     onClose();
   };
 
@@ -156,6 +283,74 @@ const AddPersonForm = ({
             </div>
           )}
         </h2>
+
+        {/* Photo Upload - Disabled until Firebase Storage is available */}
+        {false && (
+          <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+            <label className="form-label">Photo</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{
+                width: '100px',
+                height: '100px',
+                borderRadius: '50%',
+                border: '2px dashed #cbd5e1',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative',
+                overflow: 'hidden',
+                cursor: 'pointer',
+                background: photoPreview ? `url(${photoPreview}) center/cover` : '#f9fafb'
+              }}>
+                {!photoPreview && (
+                  <Camera size={24} color="#9ca3af" />
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                  style={{
+                    position: 'absolute',
+                    width: '100%',
+                    height: '100%',
+                    opacity: 0,
+                    cursor: 'pointer'
+                  }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                  Click to upload photo
+                </p>
+                <p style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+                  Max size: 2MB • JPG, PNG
+                </p>
+                {photoPreview && (
+                  <button
+                    type="button"
+                    onClick={removePhoto}
+                    style={{
+                      marginTop: '0.5rem',
+                      background: '#dc2626',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0.25rem 0.75rem',
+                      borderRadius: '0.25rem',
+                      fontSize: '0.75rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem'
+                    }}
+                  >
+                    <X size={14} />
+                    Remove Photo
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         
         <div className="form-group">
           <label className="form-label">Full Name *</label>
@@ -167,6 +362,18 @@ const AddPersonForm = ({
             className="form-input"
             placeholder="Enter full name"
             required
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Nickname</label>
+          <input
+            type="text"
+            name="nickname"
+            value={formData.nickname}
+            onChange={handleInputChange}
+            className="form-input"
+            placeholder="Enter nickname (optional)"
           />
         </div>
 
@@ -237,6 +444,34 @@ const AddPersonForm = ({
           </div>
         </div>
 
+        {/* Future Kannada fields - hidden for now */}
+        {false && (
+          <>
+            <div className="form-group">
+              <label className="form-label">Name in Kannada</label>
+              <input
+                type="text"
+                name="nameKannada"
+                value={formData.nameKannada}
+                onChange={handleInputChange}
+                className="form-input"
+                placeholder="ಹೆಸರು"
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Location in Kannada</label>
+              <input
+                type="text"
+                name="locationKannada"
+                value={formData.locationKannada}
+                onChange={handleInputChange}
+                className="form-input"
+                placeholder="ಸ್ಥಳ"
+              />
+            </div>
+          </>
+        )}
+
         {/* Main lineage indicator */}
         {willBeMainLineage() && (
           <div style={{ 
@@ -286,13 +521,19 @@ const AddPersonForm = ({
           <button
             onClick={handleSubmit}
             className="button-primary"
-            disabled={formData.birthYear && formData.deathYear && parseInt(formData.deathYear) <= parseInt(formData.birthYear)}
+            disabled={
+              isUploading || 
+              (formData.birthYear && formData.deathYear && parseInt(formData.deathYear) <= parseInt(formData.birthYear))
+            }
           >
-            {isEditing ? 'Update Person' : addingParentFor ? 'Add Parent' : 'Add Person'}
+            {isUploading ? 'Uploading...' : 
+             isEditing ? 'Update Person' : 
+             addingParentFor ? 'Add Parent' : 'Add Person'}
           </button>
           <button
             onClick={handleClose}
             className="button-secondary"
+            disabled={isUploading}
           >
             Cancel
           </button>

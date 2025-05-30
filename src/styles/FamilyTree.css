@@ -4,6 +4,9 @@
   min-height: 100vh;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* Header Styles */
@@ -11,10 +14,12 @@
   background: white;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   padding: 1rem 2rem;
+  flex-shrink: 0;
+  z-index: 40;
 }
 
 .header-content {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   display: flex;
   justify-content: space-between;
@@ -81,11 +86,16 @@
   align-items: center;
   gap: 0.5rem;
   font-size: 0.875rem;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, transform 0.2s;
 }
 
 .add-button:hover {
   background: #2563eb;
+  transform: translateY(-1px);
+}
+
+.add-button:active {
+  transform: translateY(0);
 }
 
 /* Zoom Controls */
@@ -100,11 +110,11 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  z-index: 10;
+  z-index: 30;
 }
 
 .zoom-button {
-  background: none;
+  background: white;
   border: none;
   padding: 0.5rem;
   cursor: pointer;
@@ -119,6 +129,10 @@
   background: #f3f4f6;
 }
 
+.zoom-button:active {
+  background: #e5e7eb;
+}
+
 /* Legend Styles */
 .legend {
   position: fixed;
@@ -128,7 +142,7 @@
   border-radius: 0.5rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   padding: 1rem;
-  z-index: 10;
+  z-index: 30;
   max-width: 200px;
 }
 
@@ -173,20 +187,90 @@
 
 /* Tree Container */
 .tree-container {
-  width: 100%;
-  height: calc(100vh - 80px);
-  overflow: hidden;
+  flex: 1;
+  overflow: auto;
+  background: white;
+  position: relative;
+  -webkit-overflow-scrolling: touch;
+  touch-action: none; /* Let D3 handle all touch events */
 }
 
 .tree-svg {
-  width: 100%;
-  height: 100%;
-  background: white;
   cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .tree-svg:active {
   cursor: grabbing;
+}
+
+/* Tree Node Styles - Fixed for better clicking */
+.tree-link {
+  fill: none;
+  stroke: #cbd5e1;
+  stroke-width: 2px;
+  pointer-events: none; /* Links shouldn't block clicks */
+}
+
+.tree-node {
+  cursor: pointer;
+  transition: all 0.3s ease;
+  pointer-events: all !important; /* Ensure group can be clicked */
+}
+
+.tree-node * {
+  pointer-events: none !important; /* All children shouldn't block */
+}
+
+.tree-node rect:first-child {
+  pointer-events: all !important; /* Main rect should be clickable */
+  cursor: pointer;
+}
+
+.tree-node:hover rect:first-child {
+  filter: drop-shadow(0 8px 15px rgba(0, 0, 0, 0.15)) !important;
+}
+
+.tree-node text {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  pointer-events: none !important;
+  user-select: none;
+}
+
+.tree-node circle {
+  pointer-events: none !important;
+}
+
+.tree-node image {
+  pointer-events: none !important;
+}
+
+/* Modern card shadows and effects */
+.tree-node rect {
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+}
+
+/* Minimap for mobile */
+.minimap {
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+  width: 150px;
+  height: 100px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.minimap-viewport {
+  position: absolute;
+  background: rgba(59, 130, 246, 0.2);
+  border: 2px solid #3b82f6;
+  pointer-events: none;
 }
 
 /* Modal Styles */
@@ -201,6 +285,8 @@
   align-items: center;
   justify-content: center;
   z-index: 50;
+  padding: 1rem;
+  overflow-y: auto;
 }
 
 .modal-content {
@@ -211,6 +297,7 @@
   width: 90%;
   max-height: 90vh;
   overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
 .modal-title {
@@ -251,6 +338,7 @@
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
   font-size: 0.875rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .form-input:focus, .form-select:focus {
@@ -281,13 +369,17 @@
   border-radius: 0.5rem;
   cursor: pointer;
   font-size: 0.875rem;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 
 .button-primary:hover {
   background: #2563eb;
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+}
+
+.button-primary:active {
+  transform: translateY(0);
 }
 
 .button-secondary {
@@ -299,13 +391,17 @@
   border-radius: 0.5rem;
   cursor: pointer;
   font-size: 0.875rem;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 
 .button-secondary:hover {
   background: #d1d5db;
   transform: translateY(-1px);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.button-secondary:active {
+  transform: translateY(0);
 }
 
 /* Disabled button styles */
@@ -325,229 +421,69 @@ button:disabled:hover {
   box-shadow: none !important;
 }
 
-/* D3 Tree Node Styles - Fixed for Modern Cards */
-.tree-link {
-  fill: none;
-  stroke: #cbd5e1;
-  stroke-width: 2px;
+/* Drag and Drop Styles */
+.draggable-sibling {
+  cursor: move;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.tree-node {
-  cursor: pointer;
-  transition: all 0.3s ease;
+.draggable-sibling:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-/* Fixed: Removed problematic hover transform that caused shaking */
-.tree-node rect {
-  transition: all 0.3s ease;
+.draggable-sibling.dragging {
+  opacity: 0.5;
 }
 
-.tree-node:hover rect {
-  filter: drop-shadow(0 8px 15px rgba(0, 0, 0, 0.15)) !important;
+.drag-indicator {
+  color: #9ca3af;
+  transition: color 0.2s;
 }
 
-.tree-node text {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  pointer-events: none;
-}
-
-/* Modern card shadows and effects */
-.tree-node rect {
-  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-  .header-content {
-    flex-direction: column;
-    gap: 1rem;
-  }
-  
-  .controls-section {
-    flex-direction: column;
-    width: 100%;
-  }
-  
-  .search-input {
-    width: 100%;
-  }
-  
-  .legend, .zoom-controls {
-    position: relative;
-    top: auto;
-    left: auto;
-    right: auto;
-    margin: 1rem;
-  }
-  
-  .tree-container {
-    height: calc(100vh - 200px);
-  }
-
-  .modal-content {
-    max-width: 95%;
-    padding: 1rem;
-  }
-  
-  .form-row {
-    grid-template-columns: 1fr;
-  }
-  
-  .button-group {
-    flex-direction: column;
-  }
-}
-
-/* Mobile List View Styles */
-.mobile-view {
-  display: none;
-  background: white;
-  min-height: 100%;
-  padding: 1rem;
-  padding-bottom: 3rem; /* Extra padding at bottom to ensure last item is visible */
-}
-
-.family-group {
-  margin-bottom: 2rem;
-}
-
-.generation-header {
-  font-size: 0.875rem;
-  font-weight: 600;
+.draggable-sibling:hover .drag-indicator {
   color: #6b7280;
-  margin-bottom: 0.5rem;
-  padding: 0.25rem 0;
-  border-bottom: 1px solid #e5e7eb;
 }
 
-.mobile-person-card {
-  background: white;
-  border: 2px solid #e5e7eb;
-  border-radius: 0.75rem;
-  padding: 1rem;
-  margin-bottom: 0.75rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
+/* Photo upload styles */
+.photo-upload-area {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 2px dashed #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  background: #f9fafb;
+  transition: border-color 0.2s, background-color 0.2s;
 }
 
-.mobile-person-card.main-lineage {
+.photo-upload-area:hover {
   border-color: #3b82f6;
   background: #eff6ff;
 }
 
-.mobile-person-card.main-lineage .mobile-card-indicator {
-  background: #3b82f6;
+/* Pulse animation for loading */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
-.mobile-person-card.deceased {
-  opacity: 0.8;
-  background: #f9fafb;
-}
-
-.mobile-person-card:active {
-  transform: scale(0.98);
-}
-
-.mobile-card-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-.mobile-card-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 20px;
-  font-weight: bold;
-  flex-shrink: 0;
-}
-
-.mobile-card-avatar.female {
-  background: #ec4899;
-}
-
-.mobile-card-avatar.male {
-  background: #3b82f6;
-}
-
-.mobile-card-info {
-  flex: 1;
-}
-
-.mobile-card-name {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #1f2937;
-  margin-bottom: 0.125rem;
-}
-
-.mobile-card-dates {
-  font-size: 0.75rem;
-  color: #6b7280;
-}
-
-.mobile-card-details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-  color: #6b7280;
-}
-
-.mobile-card-detail {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.mobile-card-indicator {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #10b981;
-}
-
-.mobile-card-children {
-  margin-top: 0.75rem;
-  padding-left: 1.5rem;
-  border-left: 2px solid #e5e7eb;
-  max-height: none; /* Ensure no height restrictions */
-}
-
-.mobile-search-results {
-  background: #fef3c7;
-  border: 1px solid #fbbf24;
-  border-radius: 0.5rem;
-  padding: 0.75rem;
-  margin-bottom: 1rem;
-  font-size: 0.875rem;
-  color: #92400e;
-}
-
-/* Mobile Header Adjustments */
+/* Responsive Design */
 @media (max-width: 768px) {
   .family-tree-container {
     height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
   }
 
   .header {
     padding: 0.75rem 1rem;
-    position: relative;
-    z-index: 40;
-    flex-shrink: 0;
   }
 
   .header-content {
@@ -567,7 +503,7 @@ button:disabled:hover {
   .controls-section {
     width: 100%;
     display: grid;
-    grid-template-columns: 1fr auto auto auto;
+    grid-template-columns: 1fr auto auto auto auto;
     gap: 0.5rem;
   }
 
@@ -589,25 +525,24 @@ button:disabled:hover {
     margin: 0;
   }
 
-  /* Hide desktop tree view on mobile */
-  .tree-container,
-  .zoom-controls,
-  .legend {
-    display: none !important;
+  /* Show zoom controls for mobile tree view */
+  .zoom-controls {
+    top: auto;
+    bottom: 120px;
+    right: 0.5rem;
+    flex-direction: row;
+    padding: 0.25rem;
+    gap: 0.25rem;
   }
 
-  /* Show mobile view */
-  .mobile-view {
-    display: block;
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
+  .zoom-button {
+    padding: 0.5rem;
   }
 
   /* Full-screen modals on mobile */
   .modal-overlay {
     align-items: flex-end;
+    padding: 0;
   }
 
   .modal-content {
@@ -642,12 +577,32 @@ button:disabled:hover {
     margin: 1rem -1.5rem -1.5rem;
     border-top: 1px solid #e5e7eb;
     gap: 0.5rem;
+    box-shadow: 0 -4px 6px rgba(0, 0, 0, 0.05);
   }
 
   /* Connection status badge mobile adjustment */
   .title-section > div:last-child {
     font-size: 0.625rem;
     padding: 0.125rem 0.375rem;
+  }
+
+  /* Hide desktop-only elements */
+  .legend {
+    display: none !important;
+  }
+
+  /* Tree container for mobile - Alternative scroll approach */
+  .tree-container {
+    position: relative;
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+  }
+
+  .tree-svg {
+    touch-action: none;
+    min-width: 150%;
+    min-height: 150%;
   }
 }
 
@@ -664,5 +619,55 @@ button:disabled:hover {
   
   .zoom-controls {
     top: 100px;
+  }
+}
+
+/* Print styles */
+@media print {
+  .header,
+  .zoom-controls,
+  .legend,
+  .modal-overlay {
+    display: none !important;
+  }
+
+  .family-tree-container {
+    background: white;
+    min-height: auto;
+  }
+
+  .tree-container {
+    overflow: visible;
+    height: auto;
+  }
+
+  .tree-svg {
+    width: 100%;
+    height: auto;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .tree-link {
+    stroke: #000;
+    stroke-width: 3px;
+  }
+
+  .tree-node rect {
+    stroke-width: 3px;
+  }
+
+  .legend-circle {
+    border-width: 3px;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

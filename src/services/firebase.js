@@ -12,6 +12,13 @@ import {
   orderBy,
   query 
 } from 'firebase/firestore';
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject
+} from 'firebase/storage';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -28,6 +35,9 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize Firestore
 export const db = getFirestore(app);
+
+// Initialize Storage
+export const storage = getStorage(app);
 
 // Collection reference
 const COLLECTION_NAME = 'family_members';
@@ -141,6 +151,62 @@ export const familyService = {
       return true;
     } catch (error) {
       console.error('Error migrating data:', error);
+      throw error;
+    }
+  }
+};
+
+// Storage service for photos
+export const storageService = {
+  // Upload a photo
+  async uploadPhoto(file, personName) {
+    try {
+      // Create a unique filename
+      const timestamp = Date.now();
+      const safeName = personName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const fileName = `photos/${safeName}_${timestamp}_${file.name}`;
+      
+      // Create storage reference
+      const storageRef = ref(storage, fileName);
+      
+      // Upload file
+      const snapshot = await uploadBytes(storageRef, file);
+      
+      // Get download URL
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      
+      console.log('Photo uploaded successfully:', downloadURL);
+      return downloadURL;
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      throw error;
+    }
+  },
+
+  // Delete a photo
+  async deletePhoto(photoURL) {
+    try {
+      // Extract the file path from the URL
+      // Firebase Storage URLs contain the path after '/o/'
+      const matches = photoURL.match(/\/o\/(.+?)\?/);
+      if (!matches) {
+        console.error('Invalid photo URL:', photoURL);
+        return false;
+      }
+      
+      const filePath = decodeURIComponent(matches[1]);
+      const storageRef = ref(storage, filePath);
+      
+      await deleteObject(storageRef);
+      console.log('Photo deleted successfully');
+      return true;
+    } catch (error) {
+      console.error('Error deleting photo:', error);
+      // Don't throw error if photo doesn't exist
+      if (error.code === 'storage/object-not-found') {
+        console.log('Photo already deleted or not found');
+        return true;
+      }
       throw error;
     }
   }
