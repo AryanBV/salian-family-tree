@@ -15,6 +15,17 @@ const PersonProfile = ({
   const [siblings, setSiblings] = useState([]);
   const [draggedSibling, setDraggedSibling] = useState(null);
   const [showReorderMode, setShowReorderMode] = useState(false);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     if (person && person.parentId) {
@@ -70,35 +81,61 @@ const PersonProfile = ({
     }
   };
 
-  // Drag and drop handlers
-  const handleDragStart = (e, sibling) => {
-    setDraggedSibling(sibling);
+  // IMPROVED: Enhanced drag and drop with better cross-platform support
+  const handleDragStart = (e, sibling, index) => {
+    if (isMobile) return; // Disable HTML5 drag on mobile
+    
+    setDraggedSibling({ sibling, index });
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', e.target.outerHTML);
+    
+    // Add visual feedback
+    setTimeout(() => {
+      e.target.style.opacity = '0.5';
+    }, 0);
   };
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
+  const handleDragEnd = (e) => {
+    if (isMobile) return;
+    
+    e.target.style.opacity = '1';
+    setDraggedSibling(null);
+    setDragOverIndex(null);
   };
 
-  const handleDrop = (e, targetSibling) => {
+  const handleDragOver = (e, index) => {
+    if (isMobile) return;
+    
     e.preventDefault();
-    if (!draggedSibling || draggedSibling.id === targetSibling.id) return;
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => {
+    if (isMobile) return;
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e, targetIndex) => {
+    if (isMobile) return;
+    
+    e.preventDefault();
+    setDragOverIndex(null);
+    
+    if (!draggedSibling || draggedSibling.index === targetIndex) {
+      return;
+    }
 
     const newSiblings = [...siblings];
-    const draggedIndex = newSiblings.findIndex(s => s.id === draggedSibling.id);
-    const targetIndex = newSiblings.findIndex(s => s.id === targetSibling.id);
-
-    // Remove dragged item and insert at new position
-    newSiblings.splice(draggedIndex, 1);
-    newSiblings.splice(targetIndex, 0, draggedSibling);
+    const draggedItem = newSiblings.splice(draggedSibling.index, 1)[0];
+    newSiblings.splice(targetIndex, 0, draggedItem);
 
     setSiblings(newSiblings);
-    setDraggedSibling(null);
-
-    // Update the order in Firebase
     onUpdateSiblingOrder(newSiblings);
+    setDraggedSibling(null);
   };
 
-  // Arrow button handlers for mobile
+  // Arrow button handlers for mobile and desktop fallback
   const moveSibling = (sibling, direction) => {
     const currentIndex = siblings.findIndex(s => s.id === sibling.id);
     const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
@@ -388,7 +425,7 @@ const PersonProfile = ({
               </div>
             )}
 
-            {/* Siblings */}
+            {/* IMPROVED: Siblings with better drag and drop */}
             {siblings.length > 1 && (
               <div style={{ 
                 background: '#fef3c7', 
@@ -434,62 +471,101 @@ const PersonProfile = ({
                       {siblings.map((sibling, index) => (
                         <div
                           key={sibling.id}
-                          draggable={!window.matchMedia('(max-width: 768px)').matches}
-                          onDragStart={(e) => handleDragStart(e, sibling)}
-                          onDragOver={handleDragOver}
-                          onDrop={(e) => handleDrop(e, sibling)}
+                          draggable={!isMobile}
+                          onDragStart={(e) => handleDragStart(e, sibling, index)}
+                          onDragEnd={handleDragEnd}
+                          onDragOver={(e) => handleDragOver(e, index)}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => handleDrop(e, index)}
+                          className={`draggable-sibling ${draggedSibling?.index === index ? 'dragging' : ''}`}
                           style={{
                             padding: '0.5rem',
                             margin: '0.25rem 0',
-                            background: sibling.id === person.id ? '#fef3c7' : 'white',
-                            border: '1px solid #fbbf24',
+                            background: sibling.id === person.id ? '#fef3c7' : 
+                                       dragOverIndex === index && draggedSibling?.index !== index ? '#fde68a' : 'white',
+                            border: dragOverIndex === index && draggedSibling?.index !== index ? 
+                                   '2px solid #f59e0b' : '1px solid #fbbf24',
                             borderRadius: '0.25rem',
-                            cursor: window.matchMedia('(max-width: 768px)').matches ? 'default' : 'move',
+                            cursor: !isMobile ? 'move' : 'default',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'space-between'
+                            justifyContent: 'space-between',
+                            transition: 'all 0.2s ease',
+                            transform: draggedSibling?.index === index ? 'rotate(2deg) scale(1.02)' : 'none'
                           }}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <GripVertical size={16} color="#f59e0b" />
+                            {!isMobile && (
+                              <GripVertical size={16} color="#f59e0b" className="drag-indicator" />
+                            )}
                             <span style={{ fontWeight: sibling.id === person.id ? 'bold' : 'normal' }}>
                               {index + 1}. {sibling.name}
                               {sibling.birthYear && ` (${sibling.birthYear})`}
+                              {sibling.id === person.id && ' (You)'}
                             </span>
                           </div>
-                          {window.matchMedia('(max-width: 768px)').matches && (
-                            <div style={{ display: 'flex', gap: '0.25rem' }}>
-                              <button
-                                onClick={() => moveSibling(sibling, 'up')}
-                                disabled={index === 0}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  cursor: index === 0 ? 'not-allowed' : 'pointer',
-                                  opacity: index === 0 ? 0.3 : 1
-                                }}
-                              >
-                                <ArrowUp size={16} />
-                              </button>
-                              <button
-                                onClick={() => moveSibling(sibling, 'down')}
-                                disabled={index === siblings.length - 1}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  cursor: index === siblings.length - 1 ? 'not-allowed' : 'pointer',
-                                  opacity: index === siblings.length - 1 ? 0.3 : 1
-                                }}
-                              >
-                                <ArrowDown size={16} />
-                              </button>
-                            </div>
-                          )}
+                          <div style={{ display: 'flex', gap: '0.25rem' }}>
+                            <button
+                              onClick={() => moveSibling(sibling, 'up')}
+                              disabled={index === 0}
+                              style={{
+                                background: index === 0 ? '#f3f4f6' : '#f59e0b',
+                                color: index === 0 ? '#9ca3af' : 'white',
+                                border: 'none',
+                                borderRadius: '0.25rem',
+                                padding: '0.25rem',
+                                cursor: index === 0 ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.2s'
+                              }}
+                              title="Move up"
+                            >
+                              <ArrowUp size={14} />
+                            </button>
+                            <button
+                              onClick={() => moveSibling(sibling, 'down')}
+                              disabled={index === siblings.length - 1}
+                              style={{
+                                background: index === siblings.length - 1 ? '#f3f4f6' : '#f59e0b',
+                                color: index === siblings.length - 1 ? '#9ca3af' : 'white',
+                                border: 'none',
+                                borderRadius: '0.25rem',
+                                padding: '0.25rem',
+                                cursor: index === siblings.length - 1 ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.2s'
+                              }}
+                              title="Move down"
+                            >
+                              <ArrowDown size={14} />
+                            </button>
+                          </div>
                         </div>
                       ))}
-                      {!window.matchMedia('(max-width: 768px)').matches && (
-                        <div style={{ fontSize: '0.75rem', color: '#92400e', marginTop: '0.5rem' }}>
-                          Drag and drop to reorder siblings
+                      {!isMobile && (
+                        <div style={{ 
+                          fontSize: '0.75rem', 
+                          color: '#92400e', 
+                          marginTop: '0.5rem',
+                          textAlign: 'center',
+                          fontStyle: 'italic'
+                        }}>
+                          💡 Drag siblings to reorder, or use arrow buttons
+                        </div>
+                      )}
+                      {isMobile && (
+                        <div style={{ 
+                          fontSize: '0.75rem', 
+                          color: '#92400e', 
+                          marginTop: '0.5rem',
+                          textAlign: 'center',
+                          fontStyle: 'italic'
+                        }}>
+                          💡 Use arrow buttons to reorder siblings
                         </div>
                       )}
                     </div>
@@ -619,7 +695,7 @@ const PersonProfile = ({
               gap: '0.5rem',
               fontSize: '0.875rem',
               fontWeight: '500',
-              gridColumn: window.innerWidth <= 768 ? 'span 2' : 'auto',
+              gridColumn: isMobile ? 'span 2' : 'auto',
               transition: 'background-color 0.2s'
             }}
           >

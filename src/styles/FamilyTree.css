@@ -188,11 +188,10 @@
 /* Tree Container */
 .tree-container {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
   background: white;
   position: relative;
   -webkit-overflow-scrolling: touch;
-  touch-action: none; /* Let D3 handle all touch events */
 }
 
 .tree-svg {
@@ -200,36 +199,39 @@
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
+  width: 100%;
+  height: 100%;
 }
 
 .tree-svg:active {
   cursor: grabbing;
 }
 
-/* Tree Node Styles - Fixed for better clicking */
+/* FIXED: Tree Node Styles for reliable clicking on all devices */
 .tree-link {
   fill: none;
   stroke: #cbd5e1;
   stroke-width: 2px;
-  pointer-events: none; /* Links shouldn't block clicks */
+  pointer-events: none;
 }
 
 .tree-node {
   cursor: pointer;
   transition: all 0.3s ease;
-  pointer-events: all !important; /* Ensure group can be clicked */
+  pointer-events: all !important;
 }
 
+/* Ensure all child elements allow clicks to bubble up to the group */
 .tree-node * {
-  pointer-events: none !important; /* All children shouldn't block */
+  pointer-events: none !important;
 }
 
-.tree-node rect:first-child {
-  pointer-events: all !important; /* Main rect should be clickable */
-  cursor: pointer;
+/* But make sure the main group can receive clicks */
+.tree-node {
+  pointer-events: all !important;
 }
 
-.tree-node:hover rect:first-child {
+.tree-node:hover .card-background {
   filter: drop-shadow(0 8px 15px rgba(0, 0, 0, 0.15)) !important;
 }
 
@@ -239,38 +241,10 @@
   user-select: none;
 }
 
-.tree-node circle {
-  pointer-events: none !important;
-}
-
-.tree-node image {
-  pointer-events: none !important;
-}
-
 /* Modern card shadows and effects */
-.tree-node rect {
+.card-background {
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
-}
-
-/* Minimap for mobile */
-.minimap {
-  position: absolute;
-  bottom: 1rem;
-  left: 1rem;
-  width: 150px;
-  height: 100px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  overflow: hidden;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.minimap-viewport {
-  position: absolute;
-  background: rgba(59, 130, 246, 0.2);
-  border: 2px solid #3b82f6;
-  pointer-events: none;
+  pointer-events: none !important; /* Let the group handle clicks */
 }
 
 /* Modal Styles */
@@ -421,10 +395,11 @@ button:disabled:hover {
   box-shadow: none !important;
 }
 
-/* Drag and Drop Styles */
+/* IMPROVED: Drag and Drop Styles */
 .draggable-sibling {
   cursor: move;
   transition: transform 0.2s, box-shadow 0.2s;
+  touch-action: none;
 }
 
 .draggable-sibling:hover {
@@ -434,15 +409,21 @@ button:disabled:hover {
 
 .draggable-sibling.dragging {
   opacity: 0.5;
+  transform: rotate(5deg);
 }
 
 .drag-indicator {
   color: #9ca3af;
   transition: color 0.2s;
+  cursor: grab;
 }
 
 .draggable-sibling:hover .drag-indicator {
   color: #6b7280;
+}
+
+.drag-indicator:active {
+  cursor: grabbing;
 }
 
 /* Photo upload styles */
@@ -539,6 +520,18 @@ button:disabled:hover {
     padding: 0.5rem;
   }
 
+  /* FIXED: Mobile tree interaction */
+  .tree-container {
+    overflow: hidden;
+    position: relative;
+  }
+
+  .tree-svg {
+    touch-action: none;
+    width: 100%;
+    height: 100%;
+  }
+
   /* Full-screen modals on mobile */
   .modal-overlay {
     align-items: flex-end;
@@ -591,18 +584,14 @@ button:disabled:hover {
     display: none !important;
   }
 
-  /* Tree container for mobile - Alternative scroll approach */
-  .tree-container {
-    position: relative;
-    overflow: auto !important;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-x pan-y;
+  /* IMPROVED: Mobile drag and drop */
+  .draggable-sibling {
+    padding: 0.75rem;
+    touch-action: pan-y;
   }
-
-  .tree-svg {
-    touch-action: none;
-    min-width: 150%;
-    min-height: 150%;
+  
+  .drag-indicator {
+    display: none; /* Hide drag handle on mobile, use arrow buttons instead */
   }
 }
 
@@ -654,7 +643,7 @@ button:disabled:hover {
     stroke-width: 3px;
   }
 
-  .tree-node rect {
+  .card-background {
     stroke-width: 3px;
   }
 

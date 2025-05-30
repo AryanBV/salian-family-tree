@@ -26,7 +26,6 @@ const AddPersonForm = ({
     siblingOrder: undefined
   });
 
-  const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -65,7 +64,6 @@ const AddPersonForm = ({
         photoURL: '',
         siblingOrder: undefined
       });
-      setPhotoFile(null);
       setPhotoPreview(null);
     }
   }, [isEditing, editingPerson, isOpen]);
@@ -92,8 +90,6 @@ const AddPersonForm = ({
         alert('Please select an image file');
         return;
       }
-
-      setPhotoFile(file);
       
       // Create preview
       const reader = new FileReader();
@@ -105,7 +101,6 @@ const AddPersonForm = ({
   };
 
   const removePhoto = () => {
-    setPhotoFile(null);
     setPhotoPreview(null);
     setFormData(prev => ({ ...prev, photoURL: '' }));
   };
@@ -219,7 +214,6 @@ const AddPersonForm = ({
         photoURL: '',
         siblingOrder: undefined
       });
-      setPhotoFile(null);
       setPhotoPreview(null);
       
       onClose();
@@ -246,7 +240,6 @@ const AddPersonForm = ({
       photoURL: '',
       siblingOrder: undefined
     });
-    setPhotoFile(null);
     setPhotoPreview(null);
     onClose();
   };

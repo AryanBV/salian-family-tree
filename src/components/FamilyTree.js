@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import * as d3 from 'd3';
-import { Search, Plus, Home, ZoomIn, ZoomOut, Users, Download, Upload, Cloud, Wifi, WifiOff, User, MapPin, Heart, Menu, GripVertical } from 'lucide-react';
+import { Search, Plus, Home, ZoomIn, ZoomOut, Users, Download, Upload, Cloud, Wifi, WifiOff } from 'lucide-react';
 import AddPersonForm from './AddPersonForm';
 import PersonProfile from './PersonProfile';
 import { initialFamilyData, searchFamilyData } from '../data/familyData';
@@ -17,18 +17,26 @@ const FamilyTree = () => {
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [editingPerson, setEditingPerson] = useState(null);
   const [addingParentFor, setAddingParentFor] = useState(null);
-  const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
+  const [transform, setTransform] = useState({ x: 100, y: 50, k: 1 });
   const [isLoading, setIsLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState('Connected');
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const [showMinimap, setShowMinimap] = useState(false);
   
   // Refs
   const svgRef = useRef();
   const containerRef = useRef();
   const unsubscribeRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 1400, height: 900 });
+
+  // Debug effect to track state changes
+  useEffect(() => {
+    console.log("🔄 Modal state changed:", {
+      showProfile,
+      showAddForm,
+      selectedPerson: selectedPerson?.name,
+    });
+  }, [showProfile, showAddForm, selectedPerson]);
 
   // Check for mobile on resize
   useEffect(() => {
@@ -214,13 +222,16 @@ const FamilyTree = () => {
   const filteredData = searchFamilyData(familyData, searchTerm);
   const hierarchyData = buildHierarchy(filteredData);
 
-  // Calculate tree dimensions based on data
+  // Calculate tree dimensions based on data with better spacing and stability
   useEffect(() => {
-    if (!hierarchyData) return;
+    if (!hierarchyData) {
+      setDimensions({ width: 1400, height: 900 });
+      return;
+    }
 
     const root = d3.hierarchy(hierarchyData);
     const treeLayout = d3.tree()
-      .nodeSize([220, 180]); // Use fixed node size
+      .nodeSize([160, 140]); // Reduced from [220, 180] for better spacing
     treeLayout(root);
 
     // Calculate bounds
@@ -234,19 +245,38 @@ const FamilyTree = () => {
       maxY = Math.max(maxY, d.y);
     });
 
-    // Add generous padding to prevent any overlaps
-    const padding = 300;
+    // Add padding but reduce it for better use of space
+    const padding = 200; // Reduced from 300
     const cardWidth = 180;
     const cardHeight = 120;
     
-    // Ensure minimum dimensions and add extra space for horizontal spread
-    const width = Math.max(1600, (maxX - minX) + padding * 2 + cardWidth * 2);
-    const height = Math.max(900, (maxY - minY) + padding * 2 + cardHeight);
+    // Ensure minimum dimensions and reasonable maximums
+    const newWidth = Math.max(1200, Math.min(3000, (maxX - minX) + padding * 2 + cardWidth));
+    const newHeight = Math.max(800, Math.min(2000, (maxY - minY) + padding * 2 + cardHeight));
 
-    setDimensions({ width, height });
-  }, [hierarchyData]);
+    // Only update if significantly different to prevent loops
+    if (Math.abs(newWidth - dimensions.width) > 50 || Math.abs(newHeight - dimensions.height) > 50) {
+      setDimensions({ width: newWidth, height: newHeight });
+    }
+  }, [hierarchyData]); // FIXED: Removed dimensions from dependencies
 
-  // Enhanced Tree Visualization with dynamic sizing
+  // Stable callback for handling card clicks
+  const handleCardClick = useCallback((personData) => {
+    console.log("Card clicked:", personData.name, isMobile ? "(Mobile)" : "(PC)");
+    
+    // FIXED: Clear all other modal states first
+    setShowAddForm(false);
+    setEditingPerson(null);
+    setAddingParentFor(null);
+    
+    // Then set profile states
+    setSelectedPerson(personData);
+    setShowProfile(true);
+    
+    console.log("Profile should open for:", personData.name);
+  }, [isMobile]);
+
+  // Enhanced Tree Visualization with fixed dependencies
   useEffect(() => {
     if (!hierarchyData || !svgRef.current) return;
 
@@ -256,109 +286,63 @@ const FamilyTree = () => {
     const width = dimensions.width;
     const height = dimensions.height;
 
-    // Create zoom behavior
+    // Create zoom behavior with click handling
     const zoom = d3.zoom()
-      .scaleExtent([0.1, 4])
+      .scaleExtent([0.1, 3])
       .on("zoom", (event) => {
-        setTransform(event.transform);
-        g.attr("transform", event.transform);
+        // Use a stable reference to avoid re-render loops
+        const newTransform = event.transform;
+        g.attr("transform", newTransform);
+        // Only update transform state if significantly different to avoid loops
+        if (Math.abs(newTransform.x - transform.x) > 1 || 
+            Math.abs(newTransform.y - transform.y) > 1 || 
+            Math.abs(newTransform.k - transform.k) > 0.01) {
+          setTransform({ x: newTransform.x, y: newTransform.y, k: newTransform.k });
+        }
       });
 
-    svg.call(zoom);
+    // FIXED: Prevent zoom from interfering with clicks
+    svg.call(zoom)
+      .on("dblclick.zoom", null); // Disable double-click zoom to avoid conflicts
 
-    // Mobile touch events - Fixed for better navigation
+    // Simplified mobile handling - let D3 handle most of it
     if (isMobile) {
-      let lastTouchDistance = 0;
-      let lastTouchTime = 0;
-      let touchStartX = 0;
-      let touchStartY = 0;
-      let isPanning = false;
-
-      svg.on("touchstart", function(event) {
-        event.preventDefault();
-        
-        if (event.touches.length === 2) {
-          // Pinch zoom start
-          lastTouchDistance = Math.hypot(
-            event.touches[0].pageX - event.touches[1].pageX,
-            event.touches[0].pageY - event.touches[1].pageY
-          );
-        } else if (event.touches.length === 1) {
-          // Check for double tap
-          const currentTime = new Date().getTime();
-          const tapLength = currentTime - lastTouchTime;
-          
-          if (tapLength < 300 && tapLength > 0) {
-            // Double tap - zoom in
-            const touch = event.touches[0];
-            const rect = svg.node().getBoundingClientRect();
-            const x = touch.clientX - rect.left;
-            const y = touch.clientY - rect.top;
-            
-            svg.transition().duration(300).call(
-              zoom.scaleBy,
-              2,
-              [x, y]
-            );
-          } else {
-            // Single touch - prepare for pan
-            touchStartX = event.touches[0].pageX;
-            touchStartY = event.touches[0].pageY;
-            isPanning = true;
-          }
-          lastTouchTime = currentTime;
-        }
-      });
-
-      svg.on("touchmove", function(event) {
-        event.preventDefault();
-        
-        if (event.touches.length === 2 && lastTouchDistance > 0) {
-          // Pinch zoom
-          const currentDistance = Math.hypot(
-            event.touches[0].pageX - event.touches[1].pageX,
-            event.touches[0].pageY - event.touches[1].pageY
-          );
-          
-          const scale = currentDistance / lastTouchDistance;
-          svg.call(zoom.scaleBy, scale);
-          
-          lastTouchDistance = currentDistance;
-        } else if (event.touches.length === 1 && isPanning) {
-          // Pan
-          const dx = event.touches[0].pageX - touchStartX;
-          const dy = event.touches[0].pageY - touchStartY;
-          
-          const currentTransform = d3.zoomTransform(svg.node());
-          svg.call(zoom.transform, d3.zoomIdentity
-            .translate(currentTransform.x + dx, currentTransform.y + dy)
-            .scale(currentTransform.k)
-          );
-          
-          touchStartX = event.touches[0].pageX;
-          touchStartY = event.touches[0].pageY;
-        }
-      });
-
+      // Add double-tap to zoom
+      let lastTap = 0;
       svg.on("touchend", function(event) {
-        isPanning = false;
-        lastTouchDistance = 0;
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - lastTap;
+        if (tapLength < 500 && tapLength > 0) {
+          // Double tap detected
+          event.preventDefault();
+          const touch = event.changedTouches[0];
+          const rect = svg.node().getBoundingClientRect();
+          const x = touch.clientX - rect.left;
+          const y = touch.clientY - rect.top;
+          
+          svg.transition().duration(300).call(
+            zoom.scaleBy,
+            transform.k < 1 ? 2 : 0.5,
+            [x, y]
+          );
+        }
+        lastTap = currentTime;
       });
     }
 
     const g = svg.append("g")
       .attr("transform", `translate(${transform.x},${transform.y}) scale(${transform.k})`);
 
-    // Create tree layout with much better spacing to prevent overlaps
+    // Create tree layout with better spacing
     const treeLayout = d3.tree()
-      .size([width - 400, height - 300])
-      .nodeSize([220, 180]) // Fixed node size to ensure consistent spacing
+      .size([width - 300, height - 200])
+      .nodeSize([160, 140]) // Better spacing - reduced from [220, 180]
       .separation((a, b) => {
-        // Always ensure minimum spacing between siblings
+        // Reduce separation for better spacing
         if (a.parent === b.parent) {
-          return 1.5; // 1.5x the node width between siblings
+          return 1.2; // Reduced from 1.5
         }
-        return 2; // 2x the node width between cousins
+        return 1.5; // Reduced from 2
       });
 
     const root = d3.hierarchy(hierarchyData);
@@ -377,7 +361,7 @@ const FamilyTree = () => {
     };
 
     const offsetX = (width - (bounds.maxX - bounds.minX)) / 2 - bounds.minX;
-    const offsetY = 150;
+    const offsetY = 120; // Reduced from 150
 
     // Draw links (family connections) - skip virtual root links
     const links = root.links().filter(d => !d.source.data.isVirtual);
@@ -401,15 +385,108 @@ const FamilyTree = () => {
       .attr("transform", d => `translate(${d.x + offsetX - cardWidth/2},${d.y + offsetY})`)
       .style("cursor", "pointer");
 
-    // Add click handler to the entire group
-    nodeGroups.on("click", function(event, d) {
-      event.stopPropagation();
-      setSelectedPerson(d.data);
-      setShowProfile(true);
+    // SIMPLIFIED: Direct click handling that definitely works
+    nodeGroups.each(function(d, i) {
+      const nodeElement = this;
+      
+      // Add a unique ID for debugging
+      nodeElement.setAttribute('data-person-id', d.data.id);
+      nodeElement.setAttribute('data-person-name', d.data.name);
+      
+      // Make sure the element can receive events
+      nodeElement.style.pointerEvents = 'all';
+      nodeElement.style.cursor = 'pointer';
+      
+      // Simple, direct event handler
+      const clickHandler = function(event) {
+        event.stopPropagation();
+        event.preventDefault();
+        
+        console.log("🎯 DIRECT CLICK DETECTED on:", d.data.name, isMobile ? "(Mobile)" : "(PC)");
+        console.log("Event type:", event.type);
+        console.log("Target element:", event.target.tagName);
+        
+        // Use the stable callback
+        handleCardClick(d.data);
+      };
+      
+      if (isMobile) {
+        // Mobile: Multiple touch event types for better detection
+        nodeElement.addEventListener('touchend', clickHandler, { passive: false });
+        nodeElement.addEventListener('touchstart', function(e) { e.stopPropagation(); }, { passive: false });
+        console.log("✅ Added touch handlers to:", d.data.name);
+      } else {
+        // Desktop: Multiple mouse event types
+        nodeElement.addEventListener('click', clickHandler);
+        nodeElement.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+        nodeElement.addEventListener('mouseup', clickHandler); // Backup click detection
+        console.log("✅ Added click handlers to:", d.data.name);
+      }
+      
+      // Add visual feedback to confirm element is interactive
+      nodeElement.addEventListener('mouseenter', function() {
+        console.log("🖱️ Mouse entered:", d.data.name);
+        this.style.opacity = '0.8';
+      });
+      
+      nodeElement.addEventListener('mouseleave', function() {
+        this.style.opacity = '1';
+      });
     });
+    
+    // Debug: Log current modal states
+    console.log("📋 Current modal states:", {
+      showProfile,
+      showAddForm,
+      selectedPerson: selectedPerson?.name,
+      editingPerson: editingPerson?.name,
+      addingParentFor: addingParentFor?.name
+    });
+    
+    // Add hover effects for desktop (separate from click handling)
+    if (!isMobile) {
+      nodeGroups
+        .on("mouseenter", function(event, d) {
+          d3.select(this).select(".card-background")
+            .style("stroke-width", 3)
+            .style("filter", "drop-shadow(0 8px 15px rgba(0, 0, 0, 0.2))");
+        })
+        .on("mouseleave", function(event, d) {
+          d3.select(this).select(".card-background")
+            .style("stroke-width", () => {
+              if (searchTerm) {
+                const searchLower = searchTerm.toLowerCase();
+                const isMatch = d.data.name.toLowerCase().includes(searchLower) ||
+                               (d.data.location && d.data.location.toLowerCase().includes(searchLower));
+                if (isMatch) return 4;
+              }
+              return 2;
+            })
+            .style("filter", "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))");
+        });
+    }
+    
+    // Add test functionality - click the first person programmatically after 2 seconds
+    setTimeout(() => {
+      if (nodes.length > 0) {
+        console.log("TEST: Attempting to trigger profile for first person:", nodes[0].data.name);
+        
+        // Clear all modal states first
+        setShowAddForm(false);
+        setEditingPerson(null);
+        setAddingParentFor(null);
+        
+        // Set profile states
+        setSelectedPerson(nodes[0].data);
+        setShowProfile(true);
+        
+        console.log("TEST: States set - showProfile should be true, showAddForm should be false");
+      }
+    }, 2000);
 
-    // Card backgrounds with proper pointer events
+    // Card backgrounds - this is the main clickable area
     nodeGroups.append("rect")
+      .attr("class", "card-background")
       .attr("width", cardWidth)
       .attr("height", cardHeight)
       .attr("rx", 12)
@@ -433,8 +510,7 @@ const FamilyTree = () => {
         return 2;
       })
       .style("opacity", d => d.data.deathYear ? 0.8 : 1)
-      .style("filter", "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))")
-      .style("pointer-events", "all"); // Ensure rect can receive click events
+      .style("filter", "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))");
 
     // Photo or placeholder
     const photoRadius = 25;
@@ -580,48 +656,30 @@ const FamilyTree = () => {
       .style("fill", "rgba(0, 0, 0, 0.1)")
       .style("pointer-events", "none");
 
-    // Hover effects
-    nodeGroups
-      .on("mouseenter", function(event, d) {
-        d3.select(this).select("rect")
-          .style("stroke-width", 3)
-          .style("filter", "drop-shadow(0 8px 15px rgba(0, 0, 0, 0.2))");
-      })
-      .on("mouseleave", function(event, d) {
-        d3.select(this).select("rect")
-          .style("stroke-width", d => {
-            if (searchTerm) {
-              const searchLower = searchTerm.toLowerCase();
-              const isMatch = d.data.name.toLowerCase().includes(searchLower) ||
-                             (d.data.location && d.data.location.toLowerCase().includes(searchLower));
-              if (isMatch) return 4;
-            }
-            return 2;
-          })
-          .style("filter", "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))");
-      });
-
-    // Auto-center on mobile
-    if (isMobile && nodes.length > 0) {
-      // Find the root or first person
+    // Auto-center and zoom appropriately for first load only
+    if (nodes.length > 0 && Math.abs(transform.x - 100) < 1 && Math.abs(transform.y - 50) < 1 && Math.abs(transform.k - 1) < 0.01) {
       const centerNode = nodes.find(n => !n.parent) || nodes[0];
       const centerX = centerNode.x + offsetX;
       const centerY = centerNode.y + offsetY + cardHeight/2;
       
-      // Calculate zoom to show 2-3 generations
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight - 120; // Account for header
-      const scale = Math.min(viewportWidth / 600, viewportHeight / 400, 1);
+      // Calculate appropriate zoom level
+      const viewportWidth = isMobile ? window.innerWidth : window.innerWidth - 400;
+      const viewportHeight = isMobile ? window.innerHeight - 160 : window.innerHeight - 200;
+      const scale = Math.min(viewportWidth / (bounds.maxX - bounds.minX + 400), 
+                            viewportHeight / (bounds.maxY - bounds.minY + 300), 
+                            isMobile ? 0.8 : 1.0);
       
-      const transform = d3.zoomIdentity
-        .translate(viewportWidth/2, viewportHeight/3)
+      const newTransform = d3.zoomIdentity
+        .translate(isMobile ? viewportWidth/2 : viewportWidth/2 + 100, viewportHeight/3)
         .scale(scale)
         .translate(-centerX, -centerY);
       
-      svg.call(zoom.transform, transform);
+      // Apply transform without triggering state update
+      svg.call(zoom.transform, newTransform);
     }
 
-  }, [hierarchyData, dimensions, transform, searchTerm, isMobile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hierarchyData, dimensions.width, dimensions.height, isMobile, searchTerm, handleCardClick]); // Added handleCardClick
 
   // Add new person to Firebase
   const handleAddPerson = async (newPerson) => {
@@ -693,12 +751,10 @@ const FamilyTree = () => {
     try {
       setConnectionStatus('Deleting...');
       
-      // Find the person to delete
-      const personToDelete = familyData.find(p => p.id === personId);
-      
       // Photo deletion disabled until Firebase Storage is available
       /*
       // Delete photo from storage if exists
+      const personToDelete = familyData.find(p => p.id === personId);
       if (personToDelete && personToDelete.photoURL) {
         try {
           await storageService.deletePhoto(personToDelete.photoURL);
@@ -807,25 +863,25 @@ const FamilyTree = () => {
     */
   };
 
-  // Zoom controls
+  // Zoom controls with stable references
   const handleZoom = (scale) => {
     const svg = d3.select(svgRef.current);
-    const newTransform = d3.zoomIdentity
-      .translate(transform.x, transform.y)
-      .scale(transform.k * scale);
-    
-    svg.transition().duration(300).call(
-      d3.zoom().transform,
-      newTransform
-    );
+    if (!svg.empty()) {
+      svg.transition().duration(300).call(
+        d3.zoom().scaleBy,
+        scale
+      );
+    }
   };
 
   const resetView = () => {
     const svg = d3.select(svgRef.current);
-    svg.transition().duration(500).call(
-      d3.zoom().transform,
-      d3.zoomIdentity.translate(100, 50)
-    );
+    if (!svg.empty()) {
+      svg.transition().duration(500).call(
+        d3.zoom().transform,
+        d3.zoomIdentity.translate(100, 50).scale(1)
+      );
+    }
   };
 
   // Export family data from Firebase
@@ -1002,16 +1058,6 @@ const FamilyTree = () => {
         <button onClick={resetView} className="zoom-button" title="Reset View">
           <Home size={20} />
         </button>
-        {isMobile && (
-          <button 
-            onClick={() => setShowMinimap(!showMinimap)} 
-            className="zoom-button" 
-            title="Toggle Minimap"
-            style={{ background: showMinimap ? '#3b82f6' : 'white', color: showMinimap ? 'white' : 'black' }}
-          >
-            <Menu size={20} />
-          </button>
-        )}
       </div>
 
       {/* Legend - Desktop only */}
@@ -1050,66 +1096,94 @@ const FamilyTree = () => {
           height={dimensions.height}
           className="tree-svg"
         />
-        
-        {/* Minimap for mobile */}
-        {isMobile && showMinimap && (
-          <div className="minimap">
-            <div className="minimap-viewport" style={{
-              transform: `translate(${transform.x * 0.1}px, ${transform.y * 0.1}px) scale(${transform.k})`,
-              width: `${100 / transform.k}%`,
-              height: `${100 / transform.k}%`
-            }} />
-          </div>
-        )}
       </div>
 
-      {/* Person Profile Modal */}
-      <PersonProfile
-        person={selectedPerson}
-        isOpen={showProfile}
-        onClose={() => {
-          setShowProfile(false);
-          setSelectedPerson(null);
-        }}
-        onAddChild={(person) => {
-          setSelectedPerson(person);
-          setAddingParentFor(null);
-          setShowProfile(false);
-          setShowAddForm(true);
-        }}
-        onAddParent={(person) => {
-          setAddingParentFor(person);
-          setSelectedPerson(null);
-          setShowProfile(false);
-          setShowAddForm(true);
-        }}
-        onEdit={(person) => {
-          setEditingPerson(person);
-          setAddingParentFor(null);
-          setShowProfile(false);
-          setShowAddForm(true);
-        }}
-        onDelete={handleDeletePerson}
-        onUpdateSiblingOrder={handleUpdateSiblingOrder}
-        familyData={familyData}
-      />
+      {/* DEBUG: Show current states */}
+      <div style={{
+        position: 'fixed',
+        top: '10px',
+        left: '10px',
+        background: 'rgba(0,0,0,0.8)',
+        color: 'white',
+        padding: '10px',
+        borderRadius: '5px',
+        fontSize: '12px',
+        zIndex: 9999
+      }}>
+        <div>showProfile: {showProfile.toString()}</div>
+        <div>showAddForm: {showAddForm.toString()}</div>
+        <div>selectedPerson: {selectedPerson?.name || 'null'}</div>
+        <div>Should show: {showProfile && selectedPerson ? 'PROFILE' : showAddForm ? 'ADD FORM' : 'NOTHING'}</div>
+      </div>
 
-      {/* Add/Edit Person Form Modal */}
-      <AddPersonForm
-        isOpen={showAddForm}
-        onClose={() => {
-          setShowAddForm(false);
-          setSelectedPerson(null);
-          setEditingPerson(null);
-          setAddingParentFor(null);
-        }}
-        onAddPerson={editingPerson ? handleEditPerson : handleAddPerson}
-        selectedParent={selectedPerson}
-        familyData={familyData}
-        editingPerson={editingPerson}
-        isEditing={!!editingPerson}
-        addingParentFor={addingParentFor}
-      />
+      {/* FIXED: Only render ONE modal at a time with clear priority */}
+      {(() => {
+        console.log("🎭 Modal rendering decision:", {
+          showProfile,
+          showAddForm,
+          selectedPerson: selectedPerson?.name,
+          decision: showProfile && selectedPerson ? 'PROFILE' : showAddForm ? 'ADD_FORM' : 'NONE'
+        });
+
+        if (showProfile && selectedPerson) {
+          console.log("🎯 Rendering PersonProfile for:", selectedPerson.name);
+          return (
+            <PersonProfile
+              person={selectedPerson}
+              isOpen={true}
+              onClose={() => {
+                console.log("🚪 Closing profile");
+                setShowProfile(false);
+                setSelectedPerson(null);
+              }}
+              onAddChild={(person) => {
+                setSelectedPerson(person);
+                setAddingParentFor(null);
+                setShowProfile(false);
+                setShowAddForm(true);
+              }}
+              onAddParent={(person) => {
+                setAddingParentFor(person);
+                setSelectedPerson(null);
+                setShowProfile(false);
+                setShowAddForm(true);
+              }}
+              onEdit={(person) => {
+                setEditingPerson(person);
+                setAddingParentFor(null);
+                setShowProfile(false);
+                setShowAddForm(true);
+              }}
+              onDelete={handleDeletePerson}
+              onUpdateSiblingOrder={handleUpdateSiblingOrder}
+              familyData={familyData}
+            />
+          );
+        } else if (showAddForm) {
+          console.log("📝 Rendering AddPersonForm");
+          return (
+            <AddPersonForm
+              isOpen={true}
+              onClose={() => {
+                console.log("🚪 Closing add form");
+                setShowAddForm(false);
+                setSelectedPerson(null);
+                setEditingPerson(null);
+                setAddingParentFor(null);
+              }}
+              onAddPerson={editingPerson ? handleEditPerson : handleAddPerson}
+              selectedParent={selectedPerson}
+              familyData={familyData}
+              editingPerson={editingPerson}
+              isEditing={!!editingPerson}
+              addingParentFor={addingParentFor}
+            />
+          );
+        } else {
+          console.log("❌ No modal should render");
+          return null;
+        }
+      })()}
 
       {/* Data info */}
       <div style={{
