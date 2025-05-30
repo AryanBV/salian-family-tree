@@ -4,9 +4,8 @@ import { Search, Plus, Home, ZoomIn, ZoomOut, Users, Download, Upload, Cloud, Wi
 import AddPersonForm from './AddPersonForm';
 import PersonProfile from './PersonProfile';
 import { initialFamilyData, searchFamilyData } from '../data/familyData';
-import { familyService } from '../services/firebase'; // Removed storageService until Firebase Storage is available
+import { familyService } from '../services/firebase';
 import '../styles/FamilyTree.css';
-// import html2canvas from 'html2canvas'; // Commented out for now
 
 const FamilyTree = () => {
   // State management
@@ -28,15 +27,7 @@ const FamilyTree = () => {
   const containerRef = useRef();
   const unsubscribeRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 1400, height: 900 });
-
-  // Debug effect to track state changes
-  useEffect(() => {
-    console.log("🔄 Modal state changed:", {
-      showProfile,
-      showAddForm,
-      selectedPerson: selectedPerson?.name,
-    });
-  }, [showProfile, showAddForm, selectedPerson]);
+  const zoomRef = useRef(null);
 
   // Check for mobile on resize
   useEffect(() => {
@@ -231,7 +222,7 @@ const FamilyTree = () => {
 
     const root = d3.hierarchy(hierarchyData);
     const treeLayout = d3.tree()
-      .nodeSize([160, 140]); // Reduced from [220, 180] for better spacing
+      .nodeSize([160, 140]);
     treeLayout(root);
 
     // Calculate bounds
@@ -246,7 +237,7 @@ const FamilyTree = () => {
     });
 
     // Add padding but reduce it for better use of space
-    const padding = 200; // Reduced from 300
+    const padding = 200;
     const cardWidth = 180;
     const cardHeight = 120;
     
@@ -258,13 +249,13 @@ const FamilyTree = () => {
     if (Math.abs(newWidth - dimensions.width) > 50 || Math.abs(newHeight - dimensions.height) > 50) {
       setDimensions({ width: newWidth, height: newHeight });
     }
-  }, [hierarchyData]); // FIXED: Removed dimensions from dependencies
+  }, [hierarchyData]);
 
   // Stable callback for handling card clicks
   const handleCardClick = useCallback((personData) => {
-    console.log("Card clicked:", personData.name, isMobile ? "(Mobile)" : "(PC)");
+    console.log("✅ Card clicked successfully:", personData.name);
     
-    // FIXED: Clear all other modal states first
+    // Clear all other modal states first
     setShowAddForm(false);
     setEditingPerson(null);
     setAddingParentFor(null);
@@ -273,10 +264,10 @@ const FamilyTree = () => {
     setSelectedPerson(personData);
     setShowProfile(true);
     
-    console.log("Profile should open for:", personData.name);
-  }, [isMobile]);
+    console.log("✅ Profile should open for:", personData.name);
+  }, []);
 
-  // Enhanced Tree Visualization with fixed dependencies
+  // COMPLETELY REWRITTEN: Proper event delegation approach  
   useEffect(() => {
     if (!hierarchyData || !svgRef.current) return;
 
@@ -286,63 +277,61 @@ const FamilyTree = () => {
     const width = dimensions.width;
     const height = dimensions.height;
 
-    // Create zoom behavior with click handling
+    // Create main group for tree content
+    const g = svg.append("g")
+      .attr("class", "tree-group");
+
+    // PROPER APPROACH: Smart zoom with event filtering
     const zoom = d3.zoom()
       .scaleExtent([0.1, 3])
+      .filter(function(event) {
+        // Check if click is on a tree node or its children
+        const target = event.target;
+        const isOnTreeNode = target.closest('.tree-node') || 
+                            target.classList.contains('tree-node') ||
+                            target.getAttribute('class')?.includes('tree-node');
+        
+        // Allow zoom only when NOT clicking on tree nodes
+        if (isOnTreeNode) {
+          console.log("🚫 Preventing zoom - clicked on tree node");
+          return false;
+        }
+        
+        console.log("✅ Allowing zoom - clicked on background");
+        return !event.ctrlKey;
+      })
       .on("zoom", (event) => {
-        // Use a stable reference to avoid re-render loops
         const newTransform = event.transform;
         g.attr("transform", newTransform);
-        // Only update transform state if significantly different to avoid loops
-        if (Math.abs(newTransform.x - transform.x) > 1 || 
-            Math.abs(newTransform.y - transform.y) > 1 || 
-            Math.abs(newTransform.k - transform.k) > 0.01) {
-          setTransform({ x: newTransform.x, y: newTransform.y, k: newTransform.k });
+        
+        // Throttle state updates to prevent glitches
+        if (Math.abs(newTransform.x - transform.x) > 5 || 
+            Math.abs(newTransform.y - transform.y) > 5 || 
+            Math.abs(newTransform.k - transform.k) > 0.05) {
+          setTransform({ 
+            x: newTransform.x, 
+            y: newTransform.y, 
+            k: newTransform.k 
+          });
         }
       });
 
-    // FIXED: Prevent zoom from interfering with clicks
-    svg.call(zoom)
-      .on("dblclick.zoom", null); // Disable double-click zoom to avoid conflicts
+    // Store zoom reference for controls
+    zoomRef.current = zoom;
 
-    // Simplified mobile handling - let D3 handle most of it
-    if (isMobile) {
-      // Add double-tap to zoom
-      let lastTap = 0;
-      svg.on("touchend", function(event) {
-        const currentTime = new Date().getTime();
-        const tapLength = currentTime - lastTap;
-        if (tapLength < 500 && tapLength > 0) {
-          // Double tap detected
-          event.preventDefault();
-          const touch = event.changedTouches[0];
-          const rect = svg.node().getBoundingClientRect();
-          const x = touch.clientX - rect.left;
-          const y = touch.clientY - rect.top;
-          
-          svg.transition().duration(300).call(
-            zoom.scaleBy,
-            transform.k < 1 ? 2 : 0.5,
-            [x, y]
-          );
-        }
-        lastTap = currentTime;
-      });
-    }
+    // Apply zoom to entire SVG (normal approach)
+    svg.call(zoom);
 
-    const g = svg.append("g")
-      .attr("transform", `translate(${transform.x},${transform.y}) scale(${transform.k})`);
+    // Set initial transform
+    g.attr("transform", `translate(${transform.x},${transform.y}) scale(${transform.k})`);
 
-    // Create tree layout with better spacing
+    // Create tree layout
     const treeLayout = d3.tree()
       .size([width - 300, height - 200])
-      .nodeSize([160, 140]) // Better spacing - reduced from [220, 180]
+      .nodeSize([160, 140])
       .separation((a, b) => {
-        // Reduce separation for better spacing
-        if (a.parent === b.parent) {
-          return 1.2; // Reduced from 1.5
-        }
-        return 1.5; // Reduced from 2
+        if (a.parent === b.parent) return 1.2;
+        return 1.5;
       });
 
     const root = d3.hierarchy(hierarchyData);
@@ -352,7 +341,7 @@ const FamilyTree = () => {
     const cardWidth = 180;
     const cardHeight = 120;
 
-    // Adjust positions to center the tree
+    // Calculate positioning
     const bounds = {
       minX: d3.min(root.descendants(), d => d.x),
       maxX: d3.max(root.descendants(), d => d.x),
@@ -361,9 +350,9 @@ const FamilyTree = () => {
     };
 
     const offsetX = (width - (bounds.maxX - bounds.minX)) / 2 - bounds.minX;
-    const offsetY = 120; // Reduced from 150
+    const offsetY = 120;
 
-    // Draw links (family connections) - skip virtual root links
+    // Draw connection lines
     const links = root.links().filter(d => !d.source.data.isVirtual);
     g.selectAll(".tree-link")
       .data(links)
@@ -374,76 +363,48 @@ const FamilyTree = () => {
         .y(d => d.y + offsetY + cardHeight/2))
       .style("fill", "none")
       .style("stroke", "#cbd5e1")
-      .style("stroke-width", 2);
+      .style("stroke-width", 2)
+      .style("pointer-events", "none");
 
-    // Draw nodes (family member cards) - skip virtual root
+    // Draw family member cards with proper click handling
     const nodes = root.descendants().filter(d => !d.data.isVirtual);
     const nodeGroups = g.selectAll(".tree-node")
       .data(nodes)
       .enter().append("g")
       .attr("class", "tree-node")
+      .attr("data-person-id", d => d.data.id)
+      .attr("data-person-name", d => d.data.name)
       .attr("transform", d => `translate(${d.x + offsetX - cardWidth/2},${d.y + offsetY})`)
       .style("cursor", "pointer");
 
-    // SIMPLIFIED: Direct click handling that definitely works
-    nodeGroups.each(function(d, i) {
-      const nodeElement = this;
+    // CLEAN CLICK HANDLING: Use D3's event system properly
+    nodeGroups.on("click", function(event, d) {
+      // Completely stop any zoom behavior
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      event.preventDefault();
       
-      // Add a unique ID for debugging
-      nodeElement.setAttribute('data-person-id', d.data.id);
-      nodeElement.setAttribute('data-person-name', d.data.name);
+      console.log("🎯 NODE CLICKED:", d.data.name);
+      console.log("🎯 Event target:", event.target.tagName);
+      console.log("🎯 Current element:", this.getAttribute('data-person-name'));
       
-      // Make sure the element can receive events
-      nodeElement.style.pointerEvents = 'all';
-      nodeElement.style.cursor = 'pointer';
-      
-      // Simple, direct event handler
-      const clickHandler = function(event) {
+      // Call the click handler
+      handleCardClick(d.data);
+    });
+
+    // Mobile touch handling
+    if (isMobile) {
+      nodeGroups.on("touchend", function(event, d) {
         event.stopPropagation();
+        event.stopImmediatePropagation();
         event.preventDefault();
         
-        console.log("🎯 DIRECT CLICK DETECTED on:", d.data.name, isMobile ? "(Mobile)" : "(PC)");
-        console.log("Event type:", event.type);
-        console.log("Target element:", event.target.tagName);
-        
-        // Use the stable callback
+        console.log("📱 MOBILE TOUCH:", d.data.name);
         handleCardClick(d.data);
-      };
-      
-      if (isMobile) {
-        // Mobile: Multiple touch event types for better detection
-        nodeElement.addEventListener('touchend', clickHandler, { passive: false });
-        nodeElement.addEventListener('touchstart', function(e) { e.stopPropagation(); }, { passive: false });
-        console.log("✅ Added touch handlers to:", d.data.name);
-      } else {
-        // Desktop: Multiple mouse event types
-        nodeElement.addEventListener('click', clickHandler);
-        nodeElement.addEventListener('mousedown', function(e) { e.stopPropagation(); });
-        nodeElement.addEventListener('mouseup', clickHandler); // Backup click detection
-        console.log("✅ Added click handlers to:", d.data.name);
-      }
-      
-      // Add visual feedback to confirm element is interactive
-      nodeElement.addEventListener('mouseenter', function() {
-        console.log("🖱️ Mouse entered:", d.data.name);
-        this.style.opacity = '0.8';
       });
-      
-      nodeElement.addEventListener('mouseleave', function() {
-        this.style.opacity = '1';
-      });
-    });
-    
-    // Debug: Log current modal states
-    console.log("📋 Current modal states:", {
-      showProfile,
-      showAddForm,
-      selectedPerson: selectedPerson?.name,
-      editingPerson: editingPerson?.name,
-      addingParentFor: addingParentFor?.name
-    });
-    
-    // Add hover effects for desktop (separate from click handling)
+    }
+
+    // Desktop hover effects
     if (!isMobile) {
       nodeGroups
         .on("mouseenter", function(event, d) {
@@ -465,26 +426,8 @@ const FamilyTree = () => {
             .style("filter", "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))");
         });
     }
-    
-    // Add test functionality - click the first person programmatically after 2 seconds
-    setTimeout(() => {
-      if (nodes.length > 0) {
-        console.log("TEST: Attempting to trigger profile for first person:", nodes[0].data.name);
-        
-        // Clear all modal states first
-        setShowAddForm(false);
-        setEditingPerson(null);
-        setAddingParentFor(null);
-        
-        // Set profile states
-        setSelectedPerson(nodes[0].data);
-        setShowProfile(true);
-        
-        console.log("TEST: States set - showProfile should be true, showAddForm should be false");
-      }
-    }, 2000);
 
-    // Card backgrounds - this is the main clickable area
+    // Draw card backgrounds
     nodeGroups.append("rect")
       .attr("class", "card-background")
       .attr("width", cardWidth)
@@ -512,13 +455,12 @@ const FamilyTree = () => {
       .style("opacity", d => d.data.deathYear ? 0.8 : 1)
       .style("filter", "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))");
 
-    // Photo or placeholder
+    // Add photos/avatars
     const photoRadius = 25;
     nodeGroups.each(function(d) {
       const group = d3.select(this);
       
       if (d.data.photoURL) {
-        // Add clipPath for circular photo
         const clipId = `clip-${d.data.id}`;
         group.append("defs")
           .append("clipPath")
@@ -528,7 +470,6 @@ const FamilyTree = () => {
           .attr("cy", 35)
           .attr("r", photoRadius);
 
-        // Add photo
         group.append("image")
           .attr("x", 35 - photoRadius)
           .attr("y", 35 - photoRadius)
@@ -537,7 +478,6 @@ const FamilyTree = () => {
           .attr("clip-path", `url(#${clipId})`)
           .attr("href", d.data.photoURL);
       } else {
-        // Gender icon placeholder
         group.append("circle")
           .attr("cx", 35)
           .attr("cy", 35)
@@ -545,7 +485,6 @@ const FamilyTree = () => {
           .style("fill", d.data.isMainLineage ? "#3b82f6" : "#10b981")
           .style("opacity", d.data.deathYear ? 0.7 : 1);
 
-        // Gender symbol and initial
         group.append("text")
           .attr("x", 35)
           .attr("y", 30)
@@ -555,7 +494,6 @@ const FamilyTree = () => {
           .style("font-weight", "bold")
           .text(d.data.gender === 'female' ? '♀' : '♂');
 
-        // Initial
         group.append("text")
           .attr("x", 35)
           .attr("y", 45)
@@ -566,7 +504,7 @@ const FamilyTree = () => {
       }
     });
 
-    // Main lineage indicator
+    // Add main lineage indicators
     nodeGroups.filter(d => d.data.isMainLineage)
       .append("rect")
       .attr("x", cardWidth - 40)
@@ -588,7 +526,7 @@ const FamilyTree = () => {
       .style("font-weight", "bold")
       .text("MAIN");
 
-    // Name
+    // Add names
     nodeGroups.append("text")
       .attr("x", 70)
       .attr("y", 25)
@@ -600,7 +538,7 @@ const FamilyTree = () => {
         return name.length > 14 ? name.substring(0, 14) + '...' : name;
       });
 
-    // Nickname if exists
+    // Add nicknames
     nodeGroups.filter(d => d.data.nickname)
       .append("text")
       .attr("x", 70)
@@ -610,7 +548,7 @@ const FamilyTree = () => {
       .style("font-style", "italic")
       .text(d => `"${d.data.nickname}"`);
 
-    // Birth/Death years
+    // Add birth/death years
     nodeGroups.append("text")
       .attr("x", 70)
       .attr("y", d => d.data.nickname ? 55 : 45)
@@ -622,7 +560,7 @@ const FamilyTree = () => {
         return `${birth}${death}`;
       });
 
-    // Location
+    // Add locations
     nodeGroups.append("text")
       .attr("x", 10)
       .attr("y", 75)
@@ -633,7 +571,7 @@ const FamilyTree = () => {
         return location.length > 20 ? location.substring(0, 20) + '...' : location;
       });
 
-    // Spouse
+    // Add spouse information
     nodeGroups.append("text")
       .attr("x", 10)
       .attr("y", 93)
@@ -647,7 +585,7 @@ const FamilyTree = () => {
         return text.length > 22 ? text.substring(0, 22) + '...' : text;
       });
 
-    // Deceased overlay
+    // Add deceased overlay
     nodeGroups.filter(d => d.data.deathYear)
       .append("rect")
       .attr("width", cardWidth)
@@ -656,13 +594,12 @@ const FamilyTree = () => {
       .style("fill", "rgba(0, 0, 0, 0.1)")
       .style("pointer-events", "none");
 
-    // Auto-center and zoom appropriately for first load only
+    // Auto-center view on first load
     if (nodes.length > 0 && Math.abs(transform.x - 100) < 1 && Math.abs(transform.y - 50) < 1 && Math.abs(transform.k - 1) < 0.01) {
       const centerNode = nodes.find(n => !n.parent) || nodes[0];
       const centerX = centerNode.x + offsetX;
       const centerY = centerNode.y + offsetY + cardHeight/2;
       
-      // Calculate appropriate zoom level
       const viewportWidth = isMobile ? window.innerWidth : window.innerWidth - 400;
       const viewportHeight = isMobile ? window.innerHeight - 160 : window.innerHeight - 200;
       const scale = Math.min(viewportWidth / (bounds.maxX - bounds.minX + 400), 
@@ -674,12 +611,10 @@ const FamilyTree = () => {
         .scale(scale)
         .translate(-centerX, -centerY);
       
-      // Apply transform without triggering state update
       svg.call(zoom.transform, newTransform);
     }
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hierarchyData, dimensions.width, dimensions.height, isMobile, searchTerm, handleCardClick]); // Added handleCardClick
+  }, [hierarchyData, dimensions.width, dimensions.height, isMobile, searchTerm, handleCardClick, transform]);
 
   // Add new person to Firebase
   const handleAddPerson = async (newPerson) => {
@@ -750,20 +685,6 @@ const FamilyTree = () => {
   const handleDeletePerson = async (personId) => {
     try {
       setConnectionStatus('Deleting...');
-      
-      // Photo deletion disabled until Firebase Storage is available
-      /*
-      // Delete photo from storage if exists
-      const personToDelete = familyData.find(p => p.id === personId);
-      if (personToDelete && personToDelete.photoURL) {
-        try {
-          await storageService.deletePhoto(personToDelete.photoURL);
-        } catch (error) {
-          console.error('Error deleting photo:', error);
-        }
-      }
-      */
-      
       await familyService.deleteMember(personId);
       setConnectionStatus('Deleted');
       
@@ -809,76 +730,24 @@ const FamilyTree = () => {
   const downloadTreeAsPNG = async () => {
     alert('PNG download feature requires html2canvas package. Please install it with: npm install html2canvas');
     return;
-    
-    /* Original code - uncomment after installing html2canvas
-    try {
-      setConnectionStatus('Preparing download...');
-      
-      // Create a temporary container for the tree
-      const tempContainer = document.createElement('div');
-      tempContainer.style.position = 'absolute';
-      tempContainer.style.left = '-9999px';
-      tempContainer.style.background = 'white';
-      tempContainer.style.padding = '20px';
-      document.body.appendChild(tempContainer);
-
-      // Clone the SVG
-      const svgElement = svgRef.current;
-      const clonedSvg = svgElement.cloneNode(true);
-      
-      // Add title
-      const title = document.createElement('h1');
-      title.textContent = 'Salian Family Tree';
-      title.style.textAlign = 'center';
-      title.style.marginBottom = '20px';
-      title.style.fontFamily = 'Arial, sans-serif';
-      tempContainer.appendChild(title);
-      
-      tempContainer.appendChild(clonedSvg);
-
-      // Use html2canvas to convert to image
-      const canvas = await html2canvas(tempContainer, {
-        width: dimensions.width + 40,
-        height: dimensions.height + 100,
-        scale: 2
-      });
-
-      // Download the image
-      const link = document.createElement('a');
-      link.download = 'salian-family-tree.png';
-      link.href = canvas.toDataURL();
-      link.click();
-
-      // Clean up
-      document.body.removeChild(tempContainer);
-      setConnectionStatus('Downloaded');
-      
-      setTimeout(() => {
-        setConnectionStatus(isOnline ? 'Connected' : 'Offline');
-      }, 2000);
-    } catch (error) {
-      console.error('Error downloading tree:', error);
-      setConnectionStatus('Download failed');
-    }
-    */
   };
 
-  // Zoom controls with stable references
+  // FIXED: Proper zoom controls
   const handleZoom = (scale) => {
-    const svg = d3.select(svgRef.current);
-    if (!svg.empty()) {
+    if (zoomRef.current && svgRef.current) {
+      const svg = d3.select(svgRef.current);
       svg.transition().duration(300).call(
-        d3.zoom().scaleBy,
+        zoomRef.current.scaleBy,
         scale
       );
     }
   };
 
   const resetView = () => {
-    const svg = d3.select(svgRef.current);
-    if (!svg.empty()) {
+    if (zoomRef.current && svgRef.current) {
+      const svg = d3.select(svgRef.current);
       svg.transition().duration(500).call(
-        d3.zoom().transform,
+        zoomRef.current.transform,
         d3.zoomIdentity.translate(100, 50).scale(1)
       );
     }
@@ -1098,92 +967,56 @@ const FamilyTree = () => {
         />
       </div>
 
-      {/* DEBUG: Show current states */}
-      <div style={{
-        position: 'fixed',
-        top: '10px',
-        left: '10px',
-        background: 'rgba(0,0,0,0.8)',
-        color: 'white',
-        padding: '10px',
-        borderRadius: '5px',
-        fontSize: '12px',
-        zIndex: 9999
-      }}>
-        <div>showProfile: {showProfile.toString()}</div>
-        <div>showAddForm: {showAddForm.toString()}</div>
-        <div>selectedPerson: {selectedPerson?.name || 'null'}</div>
-        <div>Should show: {showProfile && selectedPerson ? 'PROFILE' : showAddForm ? 'ADD FORM' : 'NOTHING'}</div>
-      </div>
+      {/* Modal Rendering */}
+      {showProfile && selectedPerson && (
+        <PersonProfile
+          person={selectedPerson}
+          isOpen={true}
+          onClose={() => {
+            setShowProfile(false);
+            setSelectedPerson(null);
+          }}
+          onAddChild={(person) => {
+            setSelectedPerson(person);
+            setAddingParentFor(null);
+            setShowProfile(false);
+            setShowAddForm(true);
+          }}
+          onAddParent={(person) => {
+            setAddingParentFor(person);
+            setSelectedPerson(null);
+            setShowProfile(false);
+            setShowAddForm(true);
+          }}
+          onEdit={(person) => {
+            setEditingPerson(person);
+            setAddingParentFor(null);
+            setShowProfile(false);
+            setShowAddForm(true);
+          }}
+          onDelete={handleDeletePerson}
+          onUpdateSiblingOrder={handleUpdateSiblingOrder}
+          familyData={familyData}
+        />
+      )}
 
-      {/* FIXED: Only render ONE modal at a time with clear priority */}
-      {(() => {
-        console.log("🎭 Modal rendering decision:", {
-          showProfile,
-          showAddForm,
-          selectedPerson: selectedPerson?.name,
-          decision: showProfile && selectedPerson ? 'PROFILE' : showAddForm ? 'ADD_FORM' : 'NONE'
-        });
-
-        if (showProfile && selectedPerson) {
-          console.log("🎯 Rendering PersonProfile for:", selectedPerson.name);
-          return (
-            <PersonProfile
-              person={selectedPerson}
-              isOpen={true}
-              onClose={() => {
-                console.log("🚪 Closing profile");
-                setShowProfile(false);
-                setSelectedPerson(null);
-              }}
-              onAddChild={(person) => {
-                setSelectedPerson(person);
-                setAddingParentFor(null);
-                setShowProfile(false);
-                setShowAddForm(true);
-              }}
-              onAddParent={(person) => {
-                setAddingParentFor(person);
-                setSelectedPerson(null);
-                setShowProfile(false);
-                setShowAddForm(true);
-              }}
-              onEdit={(person) => {
-                setEditingPerson(person);
-                setAddingParentFor(null);
-                setShowProfile(false);
-                setShowAddForm(true);
-              }}
-              onDelete={handleDeletePerson}
-              onUpdateSiblingOrder={handleUpdateSiblingOrder}
-              familyData={familyData}
-            />
-          );
-        } else if (showAddForm) {
-          console.log("📝 Rendering AddPersonForm");
-          return (
-            <AddPersonForm
-              isOpen={true}
-              onClose={() => {
-                console.log("🚪 Closing add form");
-                setShowAddForm(false);
-                setSelectedPerson(null);
-                setEditingPerson(null);
-                setAddingParentFor(null);
-              }}
-              onAddPerson={editingPerson ? handleEditPerson : handleAddPerson}
-              selectedParent={selectedPerson}
-              familyData={familyData}
-              editingPerson={editingPerson}
-              isEditing={!!editingPerson}
-              addingParentFor={addingParentFor}
-            />
-          );
-        } else {
-          console.log("❌ No modal should render");
-          return null;
-        }
-      })()}
+      {showAddForm && (
+        <AddPersonForm
+          isOpen={true}
+          onClose={() => {
+            setShowAddForm(false);
+            setSelectedPerson(null);
+            setEditingPerson(null);
+            setAddingParentFor(null);
+          }}
+          onAddPerson={editingPerson ? handleEditPerson : handleAddPerson}
+          selectedParent={selectedPerson}
+          familyData={familyData}
+          editingPerson={editingPerson}
+          isEditing={!!editingPerson}
+          addingParentFor={addingParentFor}
+        />
+      )}
 
       {/* Data info */}
       <div style={{
