@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Camera, X } from 'lucide-react';
-// import { storageService } from '../services/firebase'; // Disabled until Firebase Storage is available
 
 const AddPersonForm = ({ 
   isOpen, 
@@ -14,12 +13,12 @@ const AddPersonForm = ({
 }) => {
   const [formData, setFormData] = useState({
     name: '',
-    nameKannada: '', // For future Kannada support
+    nameKannada: '',
     nickname: '',
     birthYear: '',
     deathYear: '',
     location: '',
-    locationKannada: '', // For future Kannada support
+    locationKannada: '',
     gender: 'female',
     spouse: '',
     photoURL: '',
@@ -79,19 +78,16 @@ const AddPersonForm = ({
   const handlePhotoChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Check file size (2MB limit)
       if (file.size > 2 * 1024 * 1024) {
         alert('Photo size must be less than 2MB');
         return;
       }
 
-      // Check file type
       if (!file.type.startsWith('image/')) {
         alert('Please select an image file');
         return;
       }
       
-      // Create preview
       const reader = new FileReader();
       reader.onload = (e) => {
         setPhotoPreview(e.target.result);
@@ -105,6 +101,7 @@ const AddPersonForm = ({
     setFormData(prev => ({ ...prev, photoURL: '' }));
   };
 
+  // FIXED: Updated handleSubmit with proper parent addition logic
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
       alert('Please enter a name');
@@ -116,33 +113,7 @@ const AddPersonForm = ({
     try {
       let photoURL = formData.photoURL;
 
-      // Photo upload disabled until Firebase Storage is available
-      /*
-      // Upload photo if new one selected
-      if (photoFile) {
-        try {
-          photoURL = await storageService.uploadPhoto(photoFile, formData.name);
-        } catch (error) {
-          console.error('Error uploading photo:', error);
-          alert('Failed to upload photo. Person will be saved without photo.');
-          photoURL = '';
-        }
-      }
-      */
-
       if (isEditing) {
-        // Photo deletion disabled until Firebase Storage is available
-        /*
-        // If photo was removed and there was an old photo, delete it
-        if (!photoURL && editingPerson.photoURL) {
-          try {
-            await storageService.deletePhoto(editingPerson.photoURL);
-          } catch (error) {
-            console.error('Error deleting old photo:', error);
-          }
-        }
-        */
-
         // Update existing person
         const updatedPerson = {
           ...editingPerson,
@@ -157,7 +128,6 @@ const AddPersonForm = ({
           spouse: formData.spouse || null,
           photoURL: photoURL || null,
           siblingOrder: formData.siblingOrder,
-          // Recalculate main lineage status if gender changed
           isMainLineage: (() => {
             if (editingPerson.parentId) {
               const parent = familyData.find(p => p.id === editingPerson.parentId);
@@ -168,13 +138,34 @@ const AddPersonForm = ({
         };
 
         await onAddPerson(updatedPerson);
+      } else if (addingParentFor) {
+        // FIXED: Adding a parent for an existing person
+        console.log('Adding parent for:', addingParentFor.name);
+        
+        const newParent = {
+          name: formData.name,
+          nameKannada: formData.nameKannada || null,
+          nickname: formData.nickname || null,
+          birthYear: formData.birthYear ? parseInt(formData.birthYear) : null,
+          deathYear: formData.deathYear ? parseInt(formData.deathYear) : null,
+          location: formData.location,
+          locationKannada: formData.locationKannada || null,
+          gender: formData.gender,
+          parentId: null, // Parent has no parent initially
+          isMainLineage: formData.gender === 'female', // Female parents can be main lineage
+          spouse: formData.spouse || null,
+          photoURL: photoURL || null,
+          siblingOrder: 0 // First child at this level
+        };
+
+        console.log('Creating parent with data:', newParent);
+        await onAddPerson(newParent);
       } else {
-        // Add new person
+        // Add new person as child to selectedParent
         const isMainLineage = selectedParent ? 
           (selectedParent.gender === 'female' && formData.gender === 'female') : 
           (formData.gender === 'female');
 
-        // Calculate sibling order if not provided
         let siblingOrder = formData.siblingOrder;
         if (siblingOrder === undefined && selectedParent) {
           const siblings = familyData.filter(p => p.parentId === selectedParent.id);
@@ -226,7 +217,6 @@ const AddPersonForm = ({
   };
 
   const handleClose = () => {
-    // Reset form when closing
     setFormData({
       name: '',
       nameKannada: '',
@@ -246,6 +236,7 @@ const AddPersonForm = ({
 
   if (!isOpen) return null;
 
+  // FIXED: Updated willBeMainLineage function
   const willBeMainLineage = () => {
     if (isEditing) {
       if (editingPerson.parentId) {
@@ -254,8 +245,8 @@ const AddPersonForm = ({
       }
       return formData.gender === 'female';
     } else if (addingParentFor) {
-      // When adding a parent, the parent determines the child's lineage status
-      return formData.gender === 'female' && addingParentFor.gender === 'female';
+      // When adding a parent, the parent is main lineage if they're female
+      return formData.gender === 'female';
     } else {
       return selectedParent ? 
         (selectedParent.gender === 'female' && formData.gender === 'female') : 
@@ -276,74 +267,6 @@ const AddPersonForm = ({
             </div>
           )}
         </h2>
-
-        {/* Photo Upload - Disabled until Firebase Storage is available */}
-        {false && (
-          <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-            <label className="form-label">Photo</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div style={{
-                width: '100px',
-                height: '100px',
-                borderRadius: '50%',
-                border: '2px dashed #cbd5e1',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                position: 'relative',
-                overflow: 'hidden',
-                cursor: 'pointer',
-                background: photoPreview ? `url(${photoPreview}) center/cover` : '#f9fafb'
-              }}>
-                {!photoPreview && (
-                  <Camera size={24} color="#9ca3af" />
-                )}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handlePhotoChange}
-                  style={{
-                    position: 'absolute',
-                    width: '100%',
-                    height: '100%',
-                    opacity: 0,
-                    cursor: 'pointer'
-                  }}
-                />
-              </div>
-              <div style={{ flex: 1 }}>
-                <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.25rem' }}>
-                  Click to upload photo
-                </p>
-                <p style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
-                  Max size: 2MB • JPG, PNG
-                </p>
-                {photoPreview && (
-                  <button
-                    type="button"
-                    onClick={removePhoto}
-                    style={{
-                      marginTop: '0.5rem',
-                      background: '#dc2626',
-                      color: 'white',
-                      border: 'none',
-                      padding: '0.25rem 0.75rem',
-                      borderRadius: '0.25rem',
-                      fontSize: '0.75rem',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem'
-                    }}
-                  >
-                    <X size={14} />
-                    Remove Photo
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
         
         <div className="form-group">
           <label className="form-label">Full Name *</label>
@@ -437,34 +360,6 @@ const AddPersonForm = ({
           </div>
         </div>
 
-        {/* Future Kannada fields - hidden for now */}
-        {false && (
-          <>
-            <div className="form-group">
-              <label className="form-label">Name in Kannada</label>
-              <input
-                type="text"
-                name="nameKannada"
-                value={formData.nameKannada}
-                onChange={handleInputChange}
-                className="form-input"
-                placeholder="ಹೆಸರು"
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Location in Kannada</label>
-              <input
-                type="text"
-                name="locationKannada"
-                value={formData.locationKannada}
-                onChange={handleInputChange}
-                className="form-input"
-                placeholder="ಸ್ಥಳ"
-              />
-            </div>
-          </>
-        )}
-
         {/* Main lineage indicator */}
         {willBeMainLineage() && (
           <div style={{ 
@@ -519,7 +414,7 @@ const AddPersonForm = ({
               (formData.birthYear && formData.deathYear && parseInt(formData.deathYear) <= parseInt(formData.birthYear))
             }
           >
-            {isUploading ? 'Uploading...' : 
+            {isUploading ? 'Saving...' : 
              isEditing ? 'Update Person' : 
              addingParentFor ? 'Add Parent' : 'Add Person'}
           </button>
@@ -545,7 +440,7 @@ const AddPersonForm = ({
           {addingParentFor && (
             <div style={{ marginTop: '0.5rem' }}>
               <strong>Adding Parent:</strong> This person will become the parent of {addingParentFor.name}. 
-              The child's lineage status may be updated accordingly.
+              The child's lineage status will be updated accordingly.
             </div>
           )}
         </div>

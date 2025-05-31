@@ -430,37 +430,122 @@ const FamilyTree = () => {
   const handleAddPerson = async (newPerson) => {
     try {
       setConnectionStatus('Saving...');
+      
       if (addingParentFor) {
+        console.log('Processing parent addition for:', addingParentFor.name);
+        console.log('New parent data:', newPerson);
+        
+        // Step 1: Create the parent first
         const parentResult = await familyService.addMember(newPerson);
+        console.log('Parent created with ID:', parentResult.id);
+        
+        // Step 2: Update the child to point to the new parent
         const updatedChild = {
           ...addingParentFor,
           parentId: parentResult.id,
+          // Update lineage: child is main lineage if parent is female and child is female
           isMainLineage: newPerson.gender === 'female' && addingParentFor.gender === 'female'
         };
-        await familyService.updateMember(addingParentFor.id, updatedChild);
+        
+        console.log('Updating child with:', updatedChild);
+        
+        // Make sure we're using the correct ID for the update
+        const childId = addingParentFor.id || addingParentFor.firestoreId;
+        if (!childId) {
+          throw new Error('Child ID not found for update');
+        }
+        
+        await familyService.updateMember(childId, updatedChild);
+        console.log('Child updated successfully');
+        
         setAddingParentFor(null);
+        setConnectionStatus('Parent added successfully');
       } else {
+        // Regular person addition
+        console.log('Adding regular person:', newPerson);
         await familyService.addMember(newPerson);
+        setConnectionStatus('Person added successfully');
       }
-      setConnectionStatus('Saved');
-      setTimeout(() => setConnectionStatus('Connected'), 2000);
+      
+      setTimeout(() => setConnectionStatus('Connected'), 3000);
     } catch (error) {
       console.error('Error adding person:', error);
-      setConnectionStatus('Save failed');
+      console.error('Error details:', {
+        addingParentFor: addingParentFor,
+        newPerson: newPerson,
+        errorMessage: error.message,
+        errorStack: error.stack
+      });
+      setConnectionStatus('Save failed - check console for details');
+      alert(`Failed to save person: ${error.message}`);
     }
   };
 
   const handleEditPerson = async (updatedPerson) => {
-    try {
-      setConnectionStatus('Updating...');
-      await familyService.updateMember(updatedPerson.id, updatedPerson);
-      setConnectionStatus('Updated');
-      setTimeout(() => setConnectionStatus('Connected'), 2000);
-    } catch (error) {
-      console.error('Error updating person:', error);
-      setConnectionStatus('Update failed');
+  try {
+    setConnectionStatus('Updating...');
+    
+    // Use the correct ID (either id or firestoreId)
+    const personId = updatedPerson.id || updatedPerson.firestoreId;
+    if (!personId) {
+      throw new Error('Person ID not found for update');
     }
-  };
+    
+    console.log('Updating person with ID:', personId);
+    console.log('Updated data:', updatedPerson);
+    
+    await familyService.updateMember(personId, updatedPerson);
+    
+    // IMPORTANT: Update the selectedPerson state so PersonProfile shows new data
+    if (selectedPerson && selectedPerson.id === updatedPerson.id) {
+      setSelectedPerson({
+        ...updatedPerson,
+        id: personId,
+        firestoreId: personId
+      });
+    }
+    
+    setConnectionStatus('Updated');
+    setTimeout(() => setConnectionStatus('Connected'), 2000);
+  } catch (error) {
+    console.error('Error updating person:', error);
+    setConnectionStatus('Update failed');
+    alert(`Failed to update person: ${error.message}`);
+  }
+};
+
+// Updated edit button click handler in PersonProfile
+const handleEditClick = (person) => {
+  console.log('Edit clicked for:', person);
+  setEditingPerson(person);
+  setAddingParentFor(null);
+  setShowProfile(false); // Close profile
+  setShowAddForm(true);   // Open edit form
+};
+
+// Updated form close handler to refresh the profile
+const handleFormClose = () => {
+  setShowAddForm(false);
+  setEditingPerson(null);
+  setAddingParentFor(null);
+  
+  // If we were editing and selectedPerson exists, refresh the profile
+  if (editingPerson && selectedPerson && editingPerson.id === selectedPerson.id) {
+    // Find the updated person in familyData
+    const updatedPersonFromData = familyData.find(p => 
+      p.id === selectedPerson.id || p.firestoreId === selectedPerson.id
+    );
+    
+    if (updatedPersonFromData) {
+      setSelectedPerson(updatedPersonFromData);
+    }
+    
+    // Reopen the profile to show updated data
+    setShowProfile(true);
+  } else {
+    setSelectedPerson(null);
+  }
+};
 
   const handleDeletePerson = async (personId) => {
     try {

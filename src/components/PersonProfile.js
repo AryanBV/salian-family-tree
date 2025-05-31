@@ -612,7 +612,13 @@ const PersonProfile = ({
           </button>
 
           <button
-            onClick={() => onAddParent(person)}
+            onClick={() => {
+              console.log('Add Parent clicked for:', person);
+              console.log('Person ID:', person.id);
+              console.log('Person firestoreId:', person.firestoreId);
+              console.log('Current parent:', parent);
+              onAddParent(person);
+            }}
             style={{
               background: '#7c3aed',
               color: 'white',
