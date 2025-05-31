@@ -251,7 +251,7 @@ const FamilyTree = () => {
     }
   }, [hierarchyData]);
 
-  // Stable callback for handling card clicks
+  // FIXED: Stable callback for handling card clicks
   const handleCardClick = useCallback((personData) => {
     console.log("✅ Card clicked successfully:", personData.name);
     
@@ -267,7 +267,7 @@ const FamilyTree = () => {
     console.log("✅ Profile should open for:", personData.name);
   }, []);
 
-  // COMPLETELY REWRITTEN: Proper event delegation approach  
+  // COMPLETELY FIXED: Proper event handling that prevents zoom conflicts
   useEffect(() => {
     if (!hierarchyData || !svgRef.current) return;
 
@@ -281,19 +281,30 @@ const FamilyTree = () => {
     const g = svg.append("g")
       .attr("class", "tree-group");
 
-    // PROPER APPROACH: Smart zoom with event filtering
+    // FIXED: Create separate zoom behavior that properly ignores node clicks
+    let isNodeClick = false;
+    
     const zoom = d3.zoom()
       .scaleExtent([0.1, 3])
       .filter(function(event) {
-        // Check if click is on a tree node or its children
-        const target = event.target;
-        const isOnTreeNode = target.closest('.tree-node') || 
-                            target.classList.contains('tree-node') ||
-                            target.getAttribute('class')?.includes('tree-node');
+        // If we just had a node click, prevent zoom
+        if (isNodeClick) {
+          isNodeClick = false;
+          return false;
+        }
         
-        // Allow zoom only when NOT clicking on tree nodes
-        if (isOnTreeNode) {
-          console.log("🚫 Preventing zoom - clicked on tree node");
+        // Check if click target is related to tree nodes
+        const target = event.target;
+        const isOnNode = target.closest('.tree-node') || 
+                        target.classList.contains('tree-node') ||
+                        target.getAttribute('class')?.includes('tree-node') ||
+                        target.tagName === 'text' ||
+                        target.tagName === 'circle' ||
+                        target.tagName === 'rect' ||
+                        target.tagName === 'image';
+        
+        if (isOnNode) {
+          console.log("🚫 Preventing zoom - clicked on node element");
           return false;
         }
         
@@ -301,25 +312,28 @@ const FamilyTree = () => {
         return !event.ctrlKey;
       })
       .on("zoom", (event) => {
-        const newTransform = event.transform;
-        g.attr("transform", newTransform);
-        
-        // Throttle state updates to prevent glitches
-        if (Math.abs(newTransform.x - transform.x) > 5 || 
-            Math.abs(newTransform.y - transform.y) > 5 || 
-            Math.abs(newTransform.k - transform.k) > 0.05) {
-          setTransform({ 
-            x: newTransform.x, 
-            y: newTransform.y, 
-            k: newTransform.k 
-          });
+        // Only apply zoom if it's not from a node click
+        if (!isNodeClick) {
+          const newTransform = event.transform;
+          g.attr("transform", newTransform);
+          
+          // Throttle state updates to prevent glitches
+          if (Math.abs(newTransform.x - transform.x) > 5 || 
+              Math.abs(newTransform.y - transform.y) > 5 || 
+              Math.abs(newTransform.k - transform.k) > 0.05) {
+            setTransform({ 
+              x: newTransform.x, 
+              y: newTransform.y, 
+              k: newTransform.k 
+            });
+          }
         }
       });
 
     // Store zoom reference for controls
     zoomRef.current = zoom;
 
-    // Apply zoom to entire SVG (normal approach)
+    // Apply zoom to SVG
     svg.call(zoom);
 
     // Set initial transform
@@ -366,7 +380,7 @@ const FamilyTree = () => {
       .style("stroke-width", 2)
       .style("pointer-events", "none");
 
-    // Draw family member cards with proper click handling
+    // FIXED: Draw family member cards with completely isolated click handling
     const nodes = root.descendants().filter(d => !d.data.isVirtual);
     const nodeGroups = g.selectAll(".tree-node")
       .data(nodes)
@@ -377,30 +391,38 @@ const FamilyTree = () => {
       .attr("transform", d => `translate(${d.x + offsetX - cardWidth/2},${d.y + offsetY})`)
       .style("cursor", "pointer");
 
-    // CLEAN CLICK HANDLING: Use D3's event system properly
+    // COMPLETELY FIXED: Click handling that prevents any zoom behavior
     nodeGroups.on("click", function(event, d) {
-      // Completely stop any zoom behavior
+      // Set flag to prevent zoom
+      isNodeClick = true;
+      
+      // Stop all event propagation immediately
       event.stopPropagation();
       event.stopImmediatePropagation();
       event.preventDefault();
       
       console.log("🎯 NODE CLICKED:", d.data.name);
-      console.log("🎯 Event target:", event.target.tagName);
-      console.log("🎯 Current element:", this.getAttribute('data-person-name'));
       
-      // Call the click handler
-      handleCardClick(d.data);
+      // Use setTimeout to ensure the click is processed after event prevention
+      setTimeout(() => {
+        handleCardClick(d.data);
+        isNodeClick = false;
+      }, 0);
     });
 
     // Mobile touch handling
     if (isMobile) {
       nodeGroups.on("touchend", function(event, d) {
+        isNodeClick = true;
         event.stopPropagation();
         event.stopImmediatePropagation();
         event.preventDefault();
         
         console.log("📱 MOBILE TOUCH:", d.data.name);
-        handleCardClick(d.data);
+        setTimeout(() => {
+          handleCardClick(d.data);
+          isNodeClick = false;
+        }, 0);
       });
     }
 
@@ -453,7 +475,8 @@ const FamilyTree = () => {
         return 2;
       })
       .style("opacity", d => d.data.deathYear ? 0.8 : 1)
-      .style("filter", "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))");
+      .style("filter", "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))")
+      .style("pointer-events", "all"); // Ensure background captures clicks
 
     // Add photos/avatars
     const photoRadius = 25;
@@ -476,14 +499,16 @@ const FamilyTree = () => {
           .attr("width", photoRadius * 2)
           .attr("height", photoRadius * 2)
           .attr("clip-path", `url(#${clipId})`)
-          .attr("href", d.data.photoURL);
+          .attr("href", d.data.photoURL)
+          .style("pointer-events", "none"); // Don't interfere with clicks
       } else {
         group.append("circle")
           .attr("cx", 35)
           .attr("cy", 35)
           .attr("r", photoRadius)
           .style("fill", d.data.isMainLineage ? "#3b82f6" : "#10b981")
-          .style("opacity", d.data.deathYear ? 0.7 : 1);
+          .style("opacity", d.data.deathYear ? 0.7 : 1)
+          .style("pointer-events", "none");
 
         group.append("text")
           .attr("x", 35)
@@ -492,6 +517,7 @@ const FamilyTree = () => {
           .style("fill", "white")
           .style("font-size", "14px")
           .style("font-weight", "bold")
+          .style("pointer-events", "none")
           .text(d.data.gender === 'female' ? '♀' : '♂');
 
         group.append("text")
@@ -500,6 +526,7 @@ const FamilyTree = () => {
           .attr("text-anchor", "middle")
           .style("fill", "white")
           .style("font-size", "12px")
+          .style("pointer-events", "none")
           .text(d.data.name.charAt(0).toUpperCase());
       }
     });
@@ -514,7 +541,8 @@ const FamilyTree = () => {
       .attr("rx", 6)
       .style("fill", "#dbeafe")
       .style("stroke", "#3b82f6")
-      .style("stroke-width", 1);
+      .style("stroke-width", 1)
+      .style("pointer-events", "none");
 
     nodeGroups.filter(d => d.data.isMainLineage)
       .append("text")
@@ -524,6 +552,7 @@ const FamilyTree = () => {
       .style("fill", "#1e40af")
       .style("font-size", "7px")
       .style("font-weight", "bold")
+      .style("pointer-events", "none")
       .text("MAIN");
 
     // Add names
@@ -533,6 +562,7 @@ const FamilyTree = () => {
       .style("fill", d => d.data.deathYear ? "#64748b" : "#1f2937")
       .style("font-size", "14px")
       .style("font-weight", "600")
+      .style("pointer-events", "none")
       .text(d => {
         const name = d.data.name;
         return name.length > 14 ? name.substring(0, 14) + '...' : name;
@@ -546,6 +576,7 @@ const FamilyTree = () => {
       .style("fill", "#9ca3af")
       .style("font-size", "11px")
       .style("font-style", "italic")
+      .style("pointer-events", "none")
       .text(d => `"${d.data.nickname}"`);
 
     // Add birth/death years
@@ -554,6 +585,7 @@ const FamilyTree = () => {
       .attr("y", d => d.data.nickname ? 55 : 45)
       .style("fill", "#6b7280")
       .style("font-size", "11px")
+      .style("pointer-events", "none")
       .text(d => {
         const birth = d.data.birthYear || '?';
         const death = d.data.deathYear ? ` - ${d.data.deathYear}` : '';
@@ -566,6 +598,7 @@ const FamilyTree = () => {
       .attr("y", 75)
       .style("fill", "#9ca3af")
       .style("font-size", "10px")
+      .style("pointer-events", "none")
       .text(d => {
         const location = d.data.location || '';
         return location.length > 20 ? location.substring(0, 20) + '...' : location;
@@ -578,6 +611,7 @@ const FamilyTree = () => {
       .style("fill", "#9ca3af")
       .style("font-size", "9px")
       .style("font-style", "italic")
+      .style("pointer-events", "none")
       .text(d => {
         const spouse = d.data.spouse;
         if (!spouse) return '';
