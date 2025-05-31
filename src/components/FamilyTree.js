@@ -256,7 +256,7 @@ const FamilyTree = () => {
 
     // Tree layout with balanced spacing
     const treeLayout = d3.tree()
-      .nodeSize([200, 140])  // Reduced spacing: more compact but not overlapping
+      .nodeSize([170, 250])  // Reduced spacing: more compact but not overlapping
       .separation((a, b) => {
         // Balanced space between siblings and cousins
         if (a.parent === b.parent) return 1.2;  // Siblings: closer
