@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
-import { Search, Plus, Home, ZoomIn, ZoomOut, Users, Download, Upload, Cloud, Wifi, WifiOff } from 'lucide-react';
+import { Search, Plus, Users, Download, Upload, Cloud, Wifi, WifiOff, ZoomIn, ZoomOut, Home } from 'lucide-react';
 import AddPersonForm from './AddPersonForm';
 import PersonProfile from './PersonProfile';
 import { initialFamilyData, searchFamilyData } from '../data/familyData';
@@ -16,17 +16,18 @@ const FamilyTree = () => {
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [editingPerson, setEditingPerson] = useState(null);
   const [addingParentFor, setAddingParentFor] = useState(null);
-  const [transform, setTransform] = useState({ x: 100, y: 50, k: 1 });
   const [isLoading, setIsLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState('Connected');
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   
+  // ZOOM STATE - Track current transform
+  const [currentTransform, setCurrentTransform] = useState({ x: 100, y: 50, k: 1 });
+  const [nodePositions, setNodePositions] = useState([]);
+  
   // Refs
   const svgRef = useRef();
-  const containerRef = useRef();
   const unsubscribeRef = useRef(null);
-  const [dimensions, setDimensions] = useState({ width: 1400, height: 900 });
   const zoomRef = useRef(null);
 
   // Check for mobile on resize
@@ -34,24 +35,20 @@ const FamilyTree = () => {
     const handleResize = () => {
       setIsMobile(window.innerWidth <= 768);
     };
-
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Enhanced buildHierarchy with sibling ordering
+  // Build hierarchy
   const buildHierarchy = (data) => {
     if (!data || data.length === 0) return null;
-
     const map = new Map();
     const roots = [];
 
-    // Create nodes
     data.forEach(person => {
       map.set(person.id, { ...person, children: [] });
     });
 
-    // Build parent-child relationships
     data.forEach(person => {
       if (person.parentId) {
         const parent = map.get(person.parentId);
@@ -64,67 +61,43 @@ const FamilyTree = () => {
       }
     });
 
-    // Sort children by birth year, then by sibling order, keeping original order as fallback
     const sortChildren = (node) => {
       if (node.children && node.children.length > 0) {
         node.children.sort((a, b) => {
-          // First priority: sibling order (if exists)
           if (a.siblingOrder !== undefined && b.siblingOrder !== undefined) {
             return a.siblingOrder - b.siblingOrder;
           }
-          // Second priority: birth year
           if (a.birthYear && b.birthYear) {
             return a.birthYear - b.birthYear;
           }
-          // If one has birth year and other doesn't, prioritize the one with birth year
           if (a.birthYear && !b.birthYear) return -1;
           if (!a.birthYear && b.birthYear) return 1;
-          // Keep original order
           return 0;
         });
-        // Recursively sort grandchildren
         node.children.forEach(sortChildren);
       }
     };
 
     roots.forEach(sortChildren);
-
-    // If multiple roots exist, create a virtual root to contain them all
     if (roots.length === 0) return null;
     if (roots.length === 1) return roots[0];
-    
-    // Multiple roots - create virtual root
-    return {
-      id: 'virtual-root',
-      name: 'Salian Family',
-      isVirtual: true,
-      children: roots
-    };
+    return { id: 'virtual-root', name: 'Salian Family', isVirtual: true, children: roots };
   };
 
-  // Load data from Firebase on component mount
+  // Load data from Firebase
   useEffect(() => {
     const loadData = async () => {
       try {
         setIsLoading(true);
         setConnectionStatus('Connecting...');
         
-        // Check if there's existing localStorage data to migrate
         const localData = localStorage.getItem('salianFamilyData');
         if (localData) {
           try {
             const parsedLocalData = JSON.parse(localData);
-            console.log('Found local data, checking if Firebase is empty...');
-            
-            // Get existing Firebase data
             const existingData = await familyService.getAllMembers();
-            
             if (existingData.length === 0 && parsedLocalData.length > 0) {
-              // Firebase is empty but localStorage has data - migrate it
-              console.log('Migrating localStorage data to Firebase...');
               await familyService.migrateLocalData(parsedLocalData);
-              
-              // Clear localStorage after successful migration
               localStorage.removeItem('salianFamilyData');
               setConnectionStatus('Data migrated to cloud');
             }
@@ -133,9 +106,7 @@ const FamilyTree = () => {
           }
         }
 
-        // Set up real-time listener
         const unsubscribe = familyService.subscribeToMembers((members) => {
-          console.log('Received', members.length, 'family members from Firebase');
           setFamilyData(members);
           setIsLoading(false);
           setConnectionStatus('Connected');
@@ -144,12 +115,10 @@ const FamilyTree = () => {
 
         unsubscribeRef.current = unsubscribe;
 
-        // If no data in Firebase and no localStorage, add initial data
         setTimeout(async () => {
           try {
             const currentData = await familyService.getAllMembers();
             if (currentData.length === 0) {
-              console.log('No data found, adding initial family data...');
               await familyService.migrateLocalData(initialFamilyData);
             }
           } catch (error) {
@@ -163,12 +132,10 @@ const FamilyTree = () => {
         setConnectionStatus('Connection failed');
         setIsOnline(false);
         
-        // Fallback to localStorage if Firebase fails
         const localData = localStorage.getItem('salianFamilyData');
         if (localData) {
           try {
-            const parsedData = JSON.parse(localData);
-            setFamilyData(parsedData);
+            setFamilyData(JSON.parse(localData));
           } catch (e) {
             setFamilyData(initialFamilyData);
           }
@@ -179,8 +146,6 @@ const FamilyTree = () => {
     };
 
     loadData();
-
-    // Cleanup subscription on unmount
     return () => {
       if (unsubscribeRef.current) {
         unsubscribeRef.current();
@@ -194,348 +159,252 @@ const FamilyTree = () => {
       setIsOnline(true);
       setConnectionStatus('Connected');
     };
-    
     const handleOffline = () => {
       setIsOnline(false);
       setConnectionStatus('Offline');
     };
-
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
-  // Use enhanced search that maintains tree structure
   const filteredData = searchFamilyData(familyData, searchTerm);
   const hierarchyData = buildHierarchy(filteredData);
 
-  // Calculate tree dimensions based on data with better spacing and stability
-  useEffect(() => {
-    if (!hierarchyData) {
-      setDimensions({ width: 1400, height: 900 });
-      return;
-    }
-
-    const root = d3.hierarchy(hierarchyData);
-    const treeLayout = d3.tree()
-      .nodeSize([160, 140]);
-    treeLayout(root);
-
-    // Calculate bounds
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-
-    root.descendants().forEach(d => {
-      minX = Math.min(minX, d.x);
-      maxX = Math.max(maxX, d.x);
-      minY = Math.min(minY, d.y);
-      maxY = Math.max(maxY, d.y);
-    });
-
-    // Add padding but reduce it for better use of space
-    const padding = 200;
-    const cardWidth = 180;
-    const cardHeight = 120;
-    
-    // Ensure minimum dimensions and reasonable maximums
-    const newWidth = Math.max(1200, Math.min(3000, (maxX - minX) + padding * 2 + cardWidth));
-    const newHeight = Math.max(800, Math.min(2000, (maxY - minY) + padding * 2 + cardHeight));
-
-    // Only update if significantly different to prevent loops
-    if (Math.abs(newWidth - dimensions.width) > 50 || Math.abs(newHeight - dimensions.height) > 50) {
-      setDimensions({ width: newWidth, height: newHeight });
-    }
-  }, [hierarchyData]);
-
-  // FIXED: Stable callback for handling card clicks
-  const handleCardClick = useCallback((personData) => {
-    console.log("✅ Card clicked successfully:", personData.name);
-    
-    // Clear all other modal states first
+  // FIXED: Click handler that opens profile
+  const handlePersonClick = (person) => {
+    console.log("✅ PERSON CLICKED:", person.name);
     setShowAddForm(false);
     setEditingPerson(null);
     setAddingParentFor(null);
-    
-    // Then set profile states
-    setSelectedPerson(personData);
+    setSelectedPerson(person);
     setShowProfile(true);
-    
-    console.log("✅ Profile should open for:", personData.name);
-  }, []);
+  };
 
-  // COMPLETELY FIXED: Proper event handling that prevents zoom conflicts
+  // ZOOM CONTROLS - Proper zoom handling
+  const handleZoom = (scaleFactor) => {
+    if (!zoomRef.current || !svgRef.current) return;
+    
+    const svg = d3.select(svgRef.current);
+    svg.transition()
+      .duration(300)
+      .call(zoomRef.current.scaleBy, scaleFactor);
+  };
+
+  const resetView = () => {
+    if (!zoomRef.current || !svgRef.current) return;
+    
+    const svg = d3.select(svgRef.current);
+    svg.transition()
+      .duration(500)
+      .call(zoomRef.current.transform, d3.zoomIdentity.translate(100, 50).scale(1));
+  };
+
+  // MAIN RENDERING - Fixed D3 + Zoom + React Overlays
   useEffect(() => {
-    if (!hierarchyData || !svgRef.current) return;
+    if (!hierarchyData || !svgRef.current || isLoading) return;
 
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
 
-    const width = dimensions.width;
-    const height = dimensions.height;
-
-    // Create main group for tree content
-    const g = svg.append("g")
-      .attr("class", "tree-group");
-
-    // FIXED: Create separate zoom behavior that properly ignores node clicks
-    let isNodeClick = false;
+    // Dynamic dimensions based on family size
+    const baseWidth = 1400;
+    const baseHeight = 900;
     
+    // Count total family members for sizing
+    const familySize = familyData.length;
+    
+    const width = familySize > 10 ? Math.max(baseWidth, 1800) : baseWidth;
+    const height = familySize > 15 ? Math.max(baseHeight, 1200) : baseHeight;
+
+    // Create main group for all tree content
+    const mainGroup = svg.append("g").attr("class", "tree-content");
+
+    // ZOOM SETUP - Only affects the main group
     const zoom = d3.zoom()
       .scaleExtent([0.1, 3])
-      .filter(function(event) {
-        // If we just had a node click, prevent zoom
-        if (isNodeClick) {
-          isNodeClick = false;
-          return false;
-        }
-        
-        // Check if click target is related to tree nodes
-        const target = event.target;
-        const isOnNode = target.closest('.tree-node') || 
-                        target.classList.contains('tree-node') ||
-                        target.getAttribute('class')?.includes('tree-node') ||
-                        target.tagName === 'text' ||
-                        target.tagName === 'circle' ||
-                        target.tagName === 'rect' ||
-                        target.tagName === 'image';
-        
-        if (isOnNode) {
-          console.log("🚫 Preventing zoom - clicked on node element");
-          return false;
-        }
-        
-        console.log("✅ Allowing zoom - clicked on background");
-        return !event.ctrlKey;
-      })
       .on("zoom", (event) => {
-        // Only apply zoom if it's not from a node click
-        if (!isNodeClick) {
-          const newTransform = event.transform;
-          g.attr("transform", newTransform);
-          
-          // Throttle state updates to prevent glitches
-          if (Math.abs(newTransform.x - transform.x) > 5 || 
-              Math.abs(newTransform.y - transform.y) > 5 || 
-              Math.abs(newTransform.k - transform.k) > 0.05) {
-            setTransform({ 
-              x: newTransform.x, 
-              y: newTransform.y, 
-              k: newTransform.k 
-            });
-          }
+        const transform = event.transform;
+        mainGroup.attr("transform", transform);
+        
+        // FIXED: Only update state if transform actually changed significantly
+        const newTransform = {
+          x: transform.x,
+          y: transform.y,
+          k: transform.k
+        };
+        
+        // Prevent infinite loops by checking if values actually changed
+        if (Math.abs(newTransform.x - currentTransform.x) > 1 || 
+            Math.abs(newTransform.y - currentTransform.y) > 1 || 
+            Math.abs(newTransform.k - currentTransform.k) > 0.01) {
+          setCurrentTransform(newTransform);
         }
       });
 
     // Store zoom reference for controls
     zoomRef.current = zoom;
 
-    // Apply zoom to SVG
+    // Apply zoom to SVG (but only to background, not nodes)
     svg.call(zoom);
 
     // Set initial transform
-    g.attr("transform", `translate(${transform.x},${transform.y}) scale(${transform.k})`);
+    mainGroup.attr("transform", `translate(${currentTransform.x},${currentTransform.y}) scale(${currentTransform.k})`);
 
-    // Create tree layout
+    // Tree layout with balanced spacing
     const treeLayout = d3.tree()
-      .size([width - 300, height - 200])
-      .nodeSize([160, 140])
+      .nodeSize([200, 140])  // Reduced spacing: more compact but not overlapping
       .separation((a, b) => {
-        if (a.parent === b.parent) return 1.2;
-        return 1.5;
+        // Balanced space between siblings and cousins
+        if (a.parent === b.parent) return 1.2;  // Siblings: closer
+        return 1.4;  // Cousins: slightly more space
       });
-
+    
     const root = d3.hierarchy(hierarchyData);
     treeLayout(root);
 
-    // Card dimensions
-    const cardWidth = 180;
-    const cardHeight = 120;
+    const nodes = root.descendants().filter(d => !d.data.isVirtual);
+    const links = root.links().filter(d => !d.source.data.isVirtual);
 
-    // Calculate positioning
+    // Calculate actual tree bounds for better centering
     const bounds = {
-      minX: d3.min(root.descendants(), d => d.x),
-      maxX: d3.max(root.descendants(), d => d.x),
-      minY: d3.min(root.descendants(), d => d.y),
-      maxY: d3.max(root.descendants(), d => d.y)
+      minX: d3.min(nodes, d => d.x),
+      maxX: d3.max(nodes, d => d.x),
+      minY: d3.min(nodes, d => d.y),
+      maxY: d3.max(nodes, d => d.y)
     };
 
-    const offsetX = (width - (bounds.maxX - bounds.minX)) / 2 - bounds.minX;
-    const offsetY = 120;
+    // Dynamic sizing based on tree content
+    const treeWidth = (bounds.maxX - bounds.minX) + 400; // Extra padding
+    const treeHeight = (bounds.maxY - bounds.minY) + 300;
+    
+    // Use larger dimensions if tree needs it
+    const dynamicWidth = Math.max(width, treeWidth);
+    const dynamicHeight = Math.max(height, treeHeight);
 
-    // Draw connection lines
-    const links = root.links().filter(d => !d.source.data.isVirtual);
-    g.selectAll(".tree-link")
+    // Better centering with more padding
+    const offsetX = (dynamicWidth - (bounds.maxX - bounds.minX)) / 2 - bounds.minX;
+    const offsetY = 120; // Fixed top padding
+
+    // Store node positions for React overlays
+    const positions = nodes.map(node => ({
+      id: node.data.id,
+      name: node.data.name,
+      x: node.x + offsetX,
+      y: node.y + offsetY,
+      data: node.data
+    }));
+    setNodePositions(positions);
+
+    // Draw links
+    mainGroup.selectAll(".link")
       .data(links)
       .enter().append("path")
-      .attr("class", "tree-link")
+      .attr("class", "link")
       .attr("d", d3.linkVertical()
         .x(d => d.x + offsetX)
-        .y(d => d.y + offsetY + cardHeight/2))
+        .y(d => d.y + offsetY))
       .style("fill", "none")
-      .style("stroke", "#cbd5e1")
+      .style("stroke", "#ccc")
       .style("stroke-width", 2)
-      .style("pointer-events", "none");
+      .style("pointer-events", "none"); // Important: prevent link interference
 
-    // FIXED: Draw family member cards with completely isolated click handling
-    const nodes = root.descendants().filter(d => !d.data.isVirtual);
-    const nodeGroups = g.selectAll(".tree-node")
+    // Draw nodes
+    const nodeGroups = mainGroup.selectAll(".node")
       .data(nodes)
       .enter().append("g")
-      .attr("class", "tree-node")
-      .attr("data-person-id", d => d.data.id)
-      .attr("data-person-name", d => d.data.name)
-      .attr("transform", d => `translate(${d.x + offsetX - cardWidth/2},${d.y + offsetY})`)
-      .style("cursor", "pointer");
+      .attr("class", "node")
+      .attr("transform", d => `translate(${d.x + offsetX},${d.y + offsetY})`)
+      .style("pointer-events", "none"); // CRITICAL: Disable D3 pointer events
 
-    // COMPLETELY FIXED: Click handling that prevents any zoom behavior
-    nodeGroups.on("click", function(event, d) {
-      // Set flag to prevent zoom
-      isNodeClick = true;
-      
-      // Stop all event propagation immediately
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-      event.preventDefault();
-      
-      console.log("🎯 NODE CLICKED:", d.data.name);
-      
-      // Use setTimeout to ensure the click is processed after event prevention
-      setTimeout(() => {
-        handleCardClick(d.data);
-        isNodeClick = false;
-      }, 0);
-    });
-
-    // Mobile touch handling
-    if (isMobile) {
-      nodeGroups.on("touchend", function(event, d) {
-        isNodeClick = true;
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        event.preventDefault();
-        
-        console.log("📱 MOBILE TOUCH:", d.data.name);
-        setTimeout(() => {
-          handleCardClick(d.data);
-          isNodeClick = false;
-        }, 0);
-      });
-    }
-
-    // Desktop hover effects
-    if (!isMobile) {
-      nodeGroups
-        .on("mouseenter", function(event, d) {
-          d3.select(this).select(".card-background")
-            .style("stroke-width", 3)
-            .style("filter", "drop-shadow(0 8px 15px rgba(0, 0, 0, 0.2))");
-        })
-        .on("mouseleave", function(event, d) {
-          d3.select(this).select(".card-background")
-            .style("stroke-width", () => {
-              if (searchTerm) {
-                const searchLower = searchTerm.toLowerCase();
-                const isMatch = d.data.name.toLowerCase().includes(searchLower) ||
-                               (d.data.location && d.data.location.toLowerCase().includes(searchLower));
-                if (isMatch) return 4;
-              }
-              return 2;
-            })
-            .style("filter", "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))");
-        });
-    }
-
-    // Draw card backgrounds
+    // Card background
     nodeGroups.append("rect")
-      .attr("class", "card-background")
-      .attr("width", cardWidth)
-      .attr("height", cardHeight)
+      .attr("x", -90)
+      .attr("y", -60)
+      .attr("width", 180)
+      .attr("height", 120)
       .attr("rx", 12)
       .style("fill", "white")
-      .style("stroke", d => {
-        if (searchTerm) {
-          const searchLower = searchTerm.toLowerCase();
-          const isMatch = d.data.name.toLowerCase().includes(searchLower) ||
-                         (d.data.location && d.data.location.toLowerCase().includes(searchLower));
-          if (isMatch) return "#f59e0b";
-        }
-        return d.data.isMainLineage ? "#3b82f6" : "#10b981";
-      })
-      .style("stroke-width", d => {
-        if (searchTerm) {
-          const searchLower = searchTerm.toLowerCase();
-          const isMatch = d.data.name.toLowerCase().includes(searchLower) ||
-                         (d.data.location && d.data.location.toLowerCase().includes(searchLower));
-          if (isMatch) return 4;
-        }
-        return 2;
-      })
-      .style("opacity", d => d.data.deathYear ? 0.8 : 1)
+      .style("stroke", d => d.data.isMainLineage ? "#3b82f6" : "#10b981")
+      .style("stroke-width", 2)
       .style("filter", "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))")
-      .style("pointer-events", "all"); // Ensure background captures clicks
+      .style("pointer-events", "none");
 
-    // Add photos/avatars
-    const photoRadius = 25;
-    nodeGroups.each(function(d) {
-      const group = d3.select(this);
-      
-      if (d.data.photoURL) {
-        const clipId = `clip-${d.data.id}`;
-        group.append("defs")
-          .append("clipPath")
-          .attr("id", clipId)
-          .append("circle")
-          .attr("cx", 35)
-          .attr("cy", 35)
-          .attr("r", photoRadius);
+    // Avatar circle
+    nodeGroups.append("circle")
+      .attr("cx", -55)
+      .attr("cy", -25)
+      .attr("r", 25)
+      .style("fill", d => d.data.isMainLineage ? "#3b82f6" : "#10b981")
+      .style("pointer-events", "none");
 
-        group.append("image")
-          .attr("x", 35 - photoRadius)
-          .attr("y", 35 - photoRadius)
-          .attr("width", photoRadius * 2)
-          .attr("height", photoRadius * 2)
-          .attr("clip-path", `url(#${clipId})`)
-          .attr("href", d.data.photoURL)
-          .style("pointer-events", "none"); // Don't interfere with clicks
-      } else {
-        group.append("circle")
-          .attr("cx", 35)
-          .attr("cy", 35)
-          .attr("r", photoRadius)
-          .style("fill", d.data.isMainLineage ? "#3b82f6" : "#10b981")
-          .style("opacity", d.data.deathYear ? 0.7 : 1)
-          .style("pointer-events", "none");
+    // Gender symbol
+    nodeGroups.append("text")
+      .attr("x", -55)
+      .attr("y", -30)
+      .attr("text-anchor", "middle")
+      .style("fill", "white")
+      .style("font-size", "14px")
+      .style("font-weight", "bold")
+      .style("pointer-events", "none")
+      .text(d => d.data.gender === 'female' ? '♀' : '♂');
 
-        group.append("text")
-          .attr("x", 35)
-          .attr("y", 30)
-          .attr("text-anchor", "middle")
-          .style("fill", "white")
-          .style("font-size", "14px")
-          .style("font-weight", "bold")
-          .style("pointer-events", "none")
-          .text(d.data.gender === 'female' ? '♀' : '♂');
+    // Initial
+    nodeGroups.append("text")
+      .attr("x", -55)
+      .attr("y", -15)
+      .attr("text-anchor", "middle")
+      .style("fill", "white")
+      .style("font-size", "12px")
+      .style("pointer-events", "none")
+      .text(d => d.data.name.charAt(0).toUpperCase());
 
-        group.append("text")
-          .attr("x", 35)
-          .attr("y", 45)
-          .attr("text-anchor", "middle")
-          .style("fill", "white")
-          .style("font-size", "12px")
-          .style("pointer-events", "none")
-          .text(d.data.name.charAt(0).toUpperCase());
-      }
-    });
+    // Name
+    nodeGroups.append("text")
+      .attr("x", -15)
+      .attr("y", -35)
+      .style("fill", "#1f2937")
+      .style("font-size", "14px")
+      .style("font-weight", "600")
+      .style("pointer-events", "none")
+      .text(d => {
+        const name = d.data.name;
+        return name.length > 14 ? name.substring(0, 14) + '...' : name;
+      });
 
-    // Add main lineage indicators
+    // Birth/death years
+    nodeGroups.append("text")
+      .attr("x", -15)
+      .attr("y", -15)
+      .style("fill", "#6b7280")
+      .style("font-size", "11px")
+      .style("pointer-events", "none")
+      .text(d => {
+        const birth = d.data.birthYear || '?';
+        const death = d.data.deathYear ? ` - ${d.data.deathYear}` : '';
+        return `${birth}${death}`;
+      });
+
+    // Location
+    nodeGroups.append("text")
+      .attr("x", -80)
+      .attr("y", 15)
+      .style("fill", "#9ca3af")
+      .style("font-size", "10px")
+      .style("pointer-events", "none")
+      .text(d => {
+        const location = d.data.location || '';
+        return location.length > 20 ? location.substring(0, 20) + '...' : location;
+      });
+
+    // Main lineage badge
     nodeGroups.filter(d => d.data.isMainLineage)
       .append("rect")
-      .attr("x", cardWidth - 40)
-      .attr("y", cardHeight - 18)
+      .attr("x", 50)
+      .attr("y", 42)
       .attr("width", 35)
       .attr("height", 12)
       .attr("rx", 6)
@@ -546,8 +415,8 @@ const FamilyTree = () => {
 
     nodeGroups.filter(d => d.data.isMainLineage)
       .append("text")
-      .attr("x", cardWidth - 22.5)
-      .attr("y", cardHeight - 10)
+      .attr("x", 67.5)
+      .attr("y", 50)
       .attr("text-anchor", "middle")
       .style("fill", "#1e40af")
       .style("font-size", "7px")
@@ -555,239 +424,73 @@ const FamilyTree = () => {
       .style("pointer-events", "none")
       .text("MAIN");
 
-    // Add names
-    nodeGroups.append("text")
-      .attr("x", 70)
-      .attr("y", 25)
-      .style("fill", d => d.data.deathYear ? "#64748b" : "#1f2937")
-      .style("font-size", "14px")
-      .style("font-weight", "600")
-      .style("pointer-events", "none")
-      .text(d => {
-        const name = d.data.name;
-        return name.length > 14 ? name.substring(0, 14) + '...' : name;
-      });
+  }, [hierarchyData, isLoading, currentTransform]);
 
-    // Add nicknames
-    nodeGroups.filter(d => d.data.nickname)
-      .append("text")
-      .attr("x", 70)
-      .attr("y", 40)
-      .style("fill", "#9ca3af")
-      .style("font-size", "11px")
-      .style("font-style", "italic")
-      .style("pointer-events", "none")
-      .text(d => `"${d.data.nickname}"`);
-
-    // Add birth/death years
-    nodeGroups.append("text")
-      .attr("x", 70)
-      .attr("y", d => d.data.nickname ? 55 : 45)
-      .style("fill", "#6b7280")
-      .style("font-size", "11px")
-      .style("pointer-events", "none")
-      .text(d => {
-        const birth = d.data.birthYear || '?';
-        const death = d.data.deathYear ? ` - ${d.data.deathYear}` : '';
-        return `${birth}${death}`;
-      });
-
-    // Add locations
-    nodeGroups.append("text")
-      .attr("x", 10)
-      .attr("y", 75)
-      .style("fill", "#9ca3af")
-      .style("font-size", "10px")
-      .style("pointer-events", "none")
-      .text(d => {
-        const location = d.data.location || '';
-        return location.length > 20 ? location.substring(0, 20) + '...' : location;
-      });
-
-    // Add spouse information
-    nodeGroups.append("text")
-      .attr("x", 10)
-      .attr("y", 93)
-      .style("fill", "#9ca3af")
-      .style("font-size", "9px")
-      .style("font-style", "italic")
-      .style("pointer-events", "none")
-      .text(d => {
-        const spouse = d.data.spouse;
-        if (!spouse) return '';
-        const text = `m. ${spouse}`;
-        return text.length > 22 ? text.substring(0, 22) + '...' : text;
-      });
-
-    // Add deceased overlay
-    nodeGroups.filter(d => d.data.deathYear)
-      .append("rect")
-      .attr("width", cardWidth)
-      .attr("height", cardHeight)
-      .attr("rx", 12)
-      .style("fill", "rgba(0, 0, 0, 0.1)")
-      .style("pointer-events", "none");
-
-    // Auto-center view on first load
-    if (nodes.length > 0 && Math.abs(transform.x - 100) < 1 && Math.abs(transform.y - 50) < 1 && Math.abs(transform.k - 1) < 0.01) {
-      const centerNode = nodes.find(n => !n.parent) || nodes[0];
-      const centerX = centerNode.x + offsetX;
-      const centerY = centerNode.y + offsetY + cardHeight/2;
-      
-      const viewportWidth = isMobile ? window.innerWidth : window.innerWidth - 400;
-      const viewportHeight = isMobile ? window.innerHeight - 160 : window.innerHeight - 200;
-      const scale = Math.min(viewportWidth / (bounds.maxX - bounds.minX + 400), 
-                            viewportHeight / (bounds.maxY - bounds.minY + 300), 
-                            isMobile ? 0.8 : 1.0);
-      
-      const newTransform = d3.zoomIdentity
-        .translate(isMobile ? viewportWidth/2 : viewportWidth/2 + 100, viewportHeight/3)
-        .scale(scale)
-        .translate(-centerX, -centerY);
-      
-      svg.call(zoom.transform, newTransform);
-    }
-
-  }, [hierarchyData, dimensions.width, dimensions.height, isMobile, searchTerm, handleCardClick, transform]);
-
-  // Add new person to Firebase
+  // Handler functions
   const handleAddPerson = async (newPerson) => {
     try {
       setConnectionStatus('Saving...');
-      
-      // Special handling for adding parents
       if (addingParentFor) {
-        // Create parent first
         const parentResult = await familyService.addMember(newPerson);
-        
-        // Update the child to have this parent
         const updatedChild = {
           ...addingParentFor,
           parentId: parentResult.id,
-          // Recalculate main lineage status
           isMainLineage: newPerson.gender === 'female' && addingParentFor.gender === 'female'
         };
-        
         await familyService.updateMember(addingParentFor.id, updatedChild);
         setAddingParentFor(null);
       } else {
         await familyService.addMember(newPerson);
       }
-      
-      setConnectionStatus('Saved to cloud');
-      
-      // Success feedback
-      setTimeout(() => {
-        if (isOnline) {
-          setConnectionStatus('Connected');
-        }
-      }, 2000);
+      setConnectionStatus('Saved');
+      setTimeout(() => setConnectionStatus('Connected'), 2000);
     } catch (error) {
       console.error('Error adding person:', error);
       setConnectionStatus('Save failed');
-      
-      // Show error for a moment
-      setTimeout(() => {
-        setConnectionStatus(isOnline ? 'Connected' : 'Offline');
-      }, 3000);
     }
   };
 
-  // Edit person
   const handleEditPerson = async (updatedPerson) => {
     try {
       setConnectionStatus('Updating...');
       await familyService.updateMember(updatedPerson.id, updatedPerson);
       setConnectionStatus('Updated');
-      
-      setTimeout(() => {
-        if (isOnline) {
-          setConnectionStatus('Connected');
-        }
-      }, 2000);
+      setTimeout(() => setConnectionStatus('Connected'), 2000);
     } catch (error) {
       console.error('Error updating person:', error);
       setConnectionStatus('Update failed');
-      
-      setTimeout(() => {
-        setConnectionStatus(isOnline ? 'Connected' : 'Offline');
-      }, 3000);
     }
   };
 
-  // Delete person
   const handleDeletePerson = async (personId) => {
     try {
       setConnectionStatus('Deleting...');
       await familyService.deleteMember(personId);
       setConnectionStatus('Deleted');
-      
-      setTimeout(() => {
-        if (isOnline) {
-          setConnectionStatus('Connected');
-        }
-      }, 2000);
+      setTimeout(() => setConnectionStatus('Connected'), 2000);
     } catch (error) {
       console.error('Error deleting person:', error);
       setConnectionStatus('Delete failed');
-      
-      setTimeout(() => {
-        setConnectionStatus(isOnline ? 'Connected' : 'Offline');
-      }, 3000);
     }
   };
 
-  // Update sibling order
   const handleUpdateSiblingOrder = async (siblings) => {
     try {
       setConnectionStatus('Updating order...');
-      
-      // Update each sibling with new order
       for (let i = 0; i < siblings.length; i++) {
         await familyService.updateMember(siblings[i].id, {
           ...siblings[i],
           siblingOrder: i
         });
       }
-      
       setConnectionStatus('Order updated');
-      setTimeout(() => {
-        setConnectionStatus(isOnline ? 'Connected' : 'Offline');
-      }, 2000);
+      setTimeout(() => setConnectionStatus('Connected'), 2000);
     } catch (error) {
       console.error('Error updating sibling order:', error);
       setConnectionStatus('Update failed');
     }
   };
 
-  // Download tree as PNG - Temporarily disabled
-  const downloadTreeAsPNG = async () => {
-    alert('PNG download feature requires html2canvas package. Please install it with: npm install html2canvas');
-    return;
-  };
-
-  // FIXED: Proper zoom controls
-  const handleZoom = (scale) => {
-    if (zoomRef.current && svgRef.current) {
-      const svg = d3.select(svgRef.current);
-      svg.transition().duration(300).call(
-        zoomRef.current.scaleBy,
-        scale
-      );
-    }
-  };
-
-  const resetView = () => {
-    if (zoomRef.current && svgRef.current) {
-      const svg = d3.select(svgRef.current);
-      svg.transition().duration(500).call(
-        zoomRef.current.transform,
-        d3.zoomIdentity.translate(100, 50).scale(1)
-      );
-    }
-  };
-
-  // Export family data from Firebase
   const exportData = async () => {
     try {
       setConnectionStatus('Exporting...');
@@ -801,17 +504,13 @@ const FamilyTree = () => {
       link.click();
       URL.revokeObjectURL(url);
       setConnectionStatus('Exported');
-      
-      setTimeout(() => {
-        setConnectionStatus(isOnline ? 'Connected' : 'Offline');
-      }, 2000);
+      setTimeout(() => setConnectionStatus('Connected'), 2000);
     } catch (error) {
       console.error('Error exporting data:', error);
       setConnectionStatus('Export failed');
     }
   };
 
-  // Import family data to Firebase
   const importData = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -820,17 +519,12 @@ const FamilyTree = () => {
         try {
           setConnectionStatus('Importing...');
           const importedData = JSON.parse(e.target.result);
-          
-          // Add each person to Firebase
           for (const person of importedData) {
             const { id, firestoreId, createdAt, updatedAt, ...personData } = person;
             await familyService.addMember(personData);
           }
-          
           setConnectionStatus('Import successful');
-          setTimeout(() => {
-            setConnectionStatus(isOnline ? 'Connected' : 'Offline');
-          }, 2000);
+          setTimeout(() => setConnectionStatus('Connected'), 2000);
         } catch (error) {
           console.error('Error importing data:', error);
           setConnectionStatus('Import failed');
@@ -840,12 +534,6 @@ const FamilyTree = () => {
     }
   };
 
-  // Clear search
-  const clearSearch = () => {
-    setSearchTerm('');
-  };
-
-  // Loading screen
   if (isLoading) {
     return (
       <div className="family-tree-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -881,7 +569,6 @@ const FamilyTree = () => {
             </div>
           </div>
           <div className="controls-section">
-            {/* Search */}
             <div className="search-container">
               <Search className="search-icon" size={16} />
               <input
@@ -892,31 +579,14 @@ const FamilyTree = () => {
                 className="search-input"
               />
               {searchTerm && (
-                <button
-                  onClick={clearSearch}
-                  style={{
-                    position: 'absolute',
-                    right: '0.5rem',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: '#6b7280'
-                  }}
-                >
-                  ✕
-                </button>
+                <button onClick={() => setSearchTerm('')} style={{
+                  position: 'absolute', right: '0.5rem', top: '50%',
+                  transform: 'translateY(-50%)', background: 'none',
+                  border: 'none', cursor: 'pointer', color: '#6b7280'
+                }}>✕</button>
               )}
             </div>
             
-            {/* Download Tree */}
-            <button onClick={downloadTreeAsPNG} className="add-button" style={{ background: '#f59e0b' }}>
-              <Download size={16} />
-              {!isMobile && 'PNG'}
-            </button>
-            
-            {/* Export/Import */}
             <button onClick={exportData} className="add-button" style={{ background: '#059669' }}>
               <Download size={16} />
               {!isMobile && 'Export'}
@@ -925,15 +595,9 @@ const FamilyTree = () => {
             <label className="add-button" style={{ background: '#7c3aed' }}>
               <Upload size={16} />
               {!isMobile && 'Import'}
-              <input
-                type="file"
-                accept=".json"
-                onChange={importData}
-                style={{ display: 'none' }}
-              />
+              <input type="file" accept=".json" onChange={importData} style={{ display: 'none' }} />
             </label>
             
-            {/* Add Person Button */}
             <button
               onClick={() => {
                 setSelectedPerson(null);
@@ -963,7 +627,7 @@ const FamilyTree = () => {
         </button>
       </div>
 
-      {/* Legend - Desktop only */}
+      {/* Legend */}
       {!isMobile && (
         <div className="legend">
           <h3>Legend</h3>
@@ -975,33 +639,50 @@ const FamilyTree = () => {
             <div className="legend-circle legend-member"></div>
             <span>Salian family member</span>
           </div>
-          <div className="legend-item">
-            <div className="legend-circle legend-deceased"></div>
-            <span>Deceased</span>
-          </div>
-          {searchTerm && (
-            <div className="legend-item">
-              <div className="legend-circle" style={{ background: '#f59e0b', borderColor: '#f59e0b' }}></div>
-              <span>Search matches</span>
-            </div>
-          )}
           <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#9ca3af' }}>
             Click any card to view profile & actions
           </div>
         </div>
       )}
 
-      {/* Tree Container */}
-      <div className="tree-container" ref={containerRef}>
+      {/* Tree Container with Dynamic SVG sizing */}
+      <div className="tree-container" style={{ position: 'relative' }}>
         <svg
           ref={svgRef}
-          width={dimensions.width}
-          height={dimensions.height}
+          width={familyData.length > 10 ? 1800 : 1400}
+          height={familyData.length > 15 ? 1200 : 900}
           className="tree-svg"
         />
+        
+        {/* FIXED: React Click Overlays that follow zoom transforms */}
+        {nodePositions.map(node => (
+          <button
+            key={node.id}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              console.log("🎯 REACT OVERLAY CLICKED:", node.name);
+              handlePersonClick(node.data);
+            }}
+            style={{
+              position: 'absolute',
+              // Apply current transform to overlay position
+              left: (node.x - 90) * currentTransform.k + currentTransform.x,
+              top: (node.y - 60) * currentTransform.k + currentTransform.y,
+              width: 180 * currentTransform.k,
+              height: 120 * currentTransform.k,
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              zIndex: 10,
+              pointerEvents: 'auto'
+            }}
+            title={`Click to view ${node.name}'s profile`}
+          />
+        ))}
       </div>
 
-      {/* Modal Rendering */}
+      {/* Modals */}
       {showProfile && selectedPerson && (
         <PersonProfile
           person={selectedPerson}
@@ -1054,14 +735,9 @@ const FamilyTree = () => {
 
       {/* Data info */}
       <div style={{
-        position: 'fixed',
-        bottom: '1rem',
-        right: '1rem',
-        background: 'rgba(255,255,255,0.9)',
-        padding: '0.5rem',
-        borderRadius: '0.25rem',
-        fontSize: '0.75rem',
-        color: '#6b7280'
+        position: 'fixed', bottom: '1rem', right: '1rem',
+        background: 'rgba(255,255,255,0.9)', padding: '0.5rem',
+        borderRadius: '0.25rem', fontSize: '0.75rem', color: '#6b7280'
       }}>
         {familyData.length} family members • {isOnline ? 'Cloud storage' : 'Offline mode'}
         {searchTerm && ` • Showing ${filteredData.length} matches`}
